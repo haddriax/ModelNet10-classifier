@@ -2,7 +2,8 @@ import os
 import re
 from pathlib import Path
 
-class OffObject:
+class OffMesh:
+    """3D mesh data from OFF (Object File Format) files."""
 
     regex_expr = re.compile( r'_+\d+$')
     delimiter = ' '
@@ -18,14 +19,14 @@ class OffObject:
         return rep
 
     @staticmethod
-    def from_lines_list(lines: list[str], name: str, has_header: bool = True) -> 'OffObject':
+    def from_lines_list(lines: list[str], name: str, has_header: bool = True) -> 'OffMesh':
         line_idx = 0
         if has_header:
             if lines[line_idx].strip() != 'OFF':
                 raise ValueError("Invalid OFF file: Missing header")
             line_idx += 1
 
-        header: list[str] = lines[line_idx].strip().split(sep=OffObject.delimiter)
+        header: list[str] = lines[line_idx].strip().split(sep=OffMesh.delimiter)
         num_vertices = int(header[0])
         num_faces = int(header[1])
         line_idx += 1
@@ -33,23 +34,23 @@ class OffObject:
         vertices: list[list[float]] = []
         for i in range(num_vertices):
             vertex: list[float] = [float(coord) for coord in
-                                   lines[line_idx].strip().split(sep=OffObject.delimiter)[:3]
+                                   lines[line_idx].strip().split(sep=OffMesh.delimiter)[:3]
                                    ]
             vertices.append(vertex)
             line_idx += 1
 
         faces: list[list[int]] = []
         for i in range(num_faces):
-            face_data = [int(x) for x in lines[line_idx].strip().split(sep=OffObject.delimiter)]
+            face_data = [int(x) for x in lines[line_idx].strip().split(sep=OffMesh.delimiter)]
             face: list[int] = face_data[1:face_data[0]+1]
             faces.append(face)
             line_idx += 1
 
-        return OffObject(vertices, faces, name=name)
+        return OffMesh(vertices, faces, name=name)
 
     @staticmethod
-    def load_from_file(file_path: Path) -> 'OffObject':
-        name = re.sub(OffObject.regex_expr, '', file_path.stem)
+    def load_from_file(file_path: Path) -> 'OffMesh':
+        name = re.sub(OffMesh.regex_expr, '', file_path.stem)
 
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"OFF file not found: {file_path}")
@@ -61,12 +62,12 @@ class OffObject:
         except (IndexError, ValueError) as e:
             raise ValueError(f"Invalid OFF file format in {file_path}: {e}")
 
-        obj = OffObject.from_lines_list(lines, name=name, has_header=True)
+        obj = OffMesh.from_lines_list(lines, name=name, has_header=True)
         obj.path = file_path
         return obj
 
 
 if __name__ == "__main__":
-    test_path = Path("night_stand_0001.off")
-    oof_object = OffObject.load_from_file(test_path)
+    test_path = Path("../night_stand_0001.off")
+    oof_object = OffMesh.load_from_file(test_path)
     print(oof_object)

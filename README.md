@@ -17,16 +17,7 @@ Finally, I wanted to practice using Tensorboard for visualizing training progres
 To follow the training process, TensorBoard is used for visualization. Make sure you have TensorBoard installed.
 #### Manual start:
 If Tensorboard doesn't start automatically, run the following command in your terminal:
-```bash
-python scripts/start_tensorboard.py
-```
-With a specific log directory:
-```bash
-tensorboard --logdir outputs/tensorboard/runs
-```
-Then, open your web browser on `http://localhost:6006/` to view the TensorBoard dashboard.
-## Run
-`python scripts/train.py`
+
 ## Deep Learning Models
 * PointNet (default)
 * PointTransformer (in progress)

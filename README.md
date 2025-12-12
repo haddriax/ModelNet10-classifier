@@ -3,6 +3,10 @@ A classifier made using Pytorch to classify 3D shapes from the ModelNet10 datase
 The project includes data loading, preprocessing, local model training, and evaluation.
 It's ultimately designed to display a comparison between different deep learning models and transformations for 3D shape classification using Tensorboard.
 
+# Thanks to:
+Opend3d library - https://www.open3d.org/  
+https://www.open3d.org/wordpress/wp-content/paper.pdf  
+
 ## Why this project?
 I already worked on 2D classification on CIFAR, and I was curious about 3D classification from points clouds that could resemble what a LIDAR sensor would capture.  
 I also wanted to create a modular codebase using Pytorch, allowing easy experimentation with different models and transformations to learn about optimizer and hyperparameter tuning.  

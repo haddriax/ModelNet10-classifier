@@ -52,6 +52,13 @@ n_vertices_face1 v1 v2 v3 ... [r g b a]
 n_vertices_face2 v1 v2 v3 ... [r g b a]  
 _..._  
 
+## Sources and References
+* PointNet: https://arxiv.org/abs/1612.00593
+* PointNet++: https://arxiv.org/abs/1706.02413
+* VoxelNet: https://arxiv.org/abs/1904.09664
+* DGCNN: https://arxiv.org/abs/1801.07829
+* Open3D: https://www.open3d.org/wordpress/wp-content/paper.pdf  
+
 ## Sampling
 In order to be fed into the neural network, the 3D models need to be converted into point clouds.  
 The points are sampled from the surface of the 3D models, to ensure uniformity in the input data, each 3D model is sampled to have exactly 1024 points (default value).  

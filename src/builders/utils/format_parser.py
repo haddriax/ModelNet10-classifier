@@ -1,8 +1,6 @@
 import numpy as np
 
 class OffMeshParser:
-    delimiter = ' '
-    """ Delimiter used in the file to separate the entries on a same line, like coordinates """
 
     @staticmethod
     def parse_off(lines: list[str], has_header: bool = True)-> tuple[np.ndarray, np.ndarray]:

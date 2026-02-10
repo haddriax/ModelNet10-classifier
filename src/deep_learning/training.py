@@ -1,3 +1,6 @@
+import time
+from typing import TypedDict
+
 import torch
 from torch import nn
 from torch.utils.data import Dataset
@@ -6,6 +9,20 @@ from tqdm import tqdm
 from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 from datetime import datetime
+
+
+class TrainingResults(TypedDict):
+    """Results returned by ModelTrainer.train()"""
+    best_test_acc: float
+    final_train_acc: float
+    final_train_loss: float
+    final_test_loss: float
+    final_test_acc: float
+    per_class_accuracies: dict[str, float]
+    model_path: str
+    best_model_path: str
+    total_training_time_seconds: float
+    epochs_trained: int
 
 
 class ModelTrainer:
@@ -123,13 +140,15 @@ class ModelTrainer:
         accuracy = correct / total
 
         # Log per-class accuracy
+        per_class_acc: dict[str, float] = {}
         for i in range(num_classes):
             if class_total[i] > 0:
                 class_acc = class_correct[i] / class_total[i]
                 class_name = self.test_dataset.get_class_name(i)
+                per_class_acc[class_name] = class_acc
                 self.writer.add_scalar(f'Accuracy/class_{class_name}', class_acc, epoch)
 
-        return avg_loss, accuracy
+        return avg_loss, accuracy, per_class_acc
 
     def save_checkpoint(self, epoch: int, test_acc: float, is_best: bool = False):
         """Save model checkpoint"""
@@ -167,7 +186,8 @@ class ModelTrainer:
         print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
         return checkpoint['epoch']
 
-    def train(self, epochs: int = 10, resume: bool = False):
+    def train(self, epochs: int = 10, resume: bool = False) -> TrainingResults:
+        start_time = time.time()
         start_epoch = 0
 
         # Resume training if requested
@@ -181,9 +201,18 @@ class ModelTrainer:
         except Exception as e:
             print(f"Could not log model graph: {e}")
 
+        final_train_loss, final_train_acc = 0.0, 0.0
+        final_test_loss, final_test_acc = 0.0, 0.0
+        final_per_class_acc: dict[str, float] = {}
+
         for epoch in range(start_epoch, epochs):
             train_loss, train_acc = self.train_epoch(epoch)
-            test_loss, test_acc = self.test(epoch)
+            test_loss, test_acc, per_class_acc = self.test(epoch)
+
+            # Track final epoch values
+            final_train_loss, final_train_acc = train_loss, train_acc
+            final_test_loss, final_test_acc = test_loss, test_acc
+            final_per_class_acc = per_class_acc
 
             # Log to TensorBoard
             self.writer.add_scalar('Loss/train', train_loss, epoch)
@@ -206,8 +235,27 @@ class ModelTrainer:
 
             self.save_checkpoint(epoch, test_acc, is_best)
 
+        total_time = time.time() - start_time
+        best_model_path = (self.save_model_path.parent /
+                           f"{self.save_model_path.stem}_best{self.save_model_path.suffix}")
+
+        # Build results
+        self.results = TrainingResults(
+            best_test_acc=self.best_test_acc,
+            final_train_acc=final_train_acc,
+            final_train_loss=final_train_loss,
+            final_test_loss=final_test_loss,
+            final_test_acc=final_test_acc,
+            per_class_accuracies=final_per_class_acc,
+            model_path=str(self.save_model_path),
+            best_model_path=str(best_model_path),
+            total_training_time_seconds=total_time,
+            epochs_trained=epochs - start_epoch,
+        )
+
         # Final save
         print(f"Training complete. Best test accuracy: {self.best_test_acc:.4f}")
         print(f"Model saved to: {self.save_model_path}")
 
         self.writer.close()
+        return self.results

@@ -2,11 +2,11 @@ import random
 
 from src.geometry.Mesh_3D import Mesh3D
 import open3d as o3d
-from pathlib import Path
 from src.builders.mesh_3D_builder import Mesh3DBuilder
+from src.config import DATA_DIR
 
 if __name__ == "__main__":
-    model_files = list(Path("./../data/ModelNet10").rglob("*.off"))
+    model_files = list(DATA_DIR.rglob("*.off"))
     random.shuffle(model_files)
 
     current_idx = 0

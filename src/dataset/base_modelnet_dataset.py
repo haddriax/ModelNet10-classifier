@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from pathlib import Path
-from typing import Tuple, Dict, Optional, Callable
+from typing import Dict, Callable
 import random
 
 import numpy as np
@@ -22,7 +22,8 @@ class BaseModelNetDataset(Dataset, ABC):
             train_ratio: float = 0.8,
             seed: int = 42,
             cache_processed: bool = False,
-            verbose: bool = True
+            verbose: bool = True,
+            transform: Callable | None = None
     ):
         if split not in ['train', 'test']:
             raise ValueError(f"split must be 'train' or 'test', got '{split}'")
@@ -36,6 +37,7 @@ class BaseModelNetDataset(Dataset, ABC):
         self.seed = seed
         self.cache_processed = cache_processed
         self.verbose = verbose
+        self.transform = transform
 
         self.files: list[Path] = []  # Python 3.12 generic
         self.labels: list[int] = []
@@ -138,7 +140,7 @@ class BaseModelNetDataset(Dataset, ABC):
         pass
 
     def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:  # Python 3.12 generic
-        """Get item with optional caching"""
+        """Get item with optional caching and transform"""
         if self.cached_data is not None:
             data = self.cached_data[idx]
         else:
@@ -147,6 +149,9 @@ class BaseModelNetDataset(Dataset, ABC):
                 data = self._process_mesh(mesh, idx)
             except Exception as e:
                 raise RuntimeError(f"Failed to load {self.files[idx]}: {e}") from e
+
+        if self.transform:
+            data = self.transform(data)
 
         return data, self.labels[idx]
 
@@ -219,7 +224,6 @@ class PointCloudDataset(BaseModelNetDataset):
     ):
         self.n_points = n_points
         self.sampling_method = sampling_method
-        self.transform = transform
 
         if cache_processed is None:
             cache_processed = (split == 'test')
@@ -227,6 +231,7 @@ class PointCloudDataset(BaseModelNetDataset):
         super().__init__(
             root_dir, split, use_existing_split,
             train_ratio, seed, cache_processed, verbose,
+            transform,
         )
 
     def _get_cache_path(self) -> Path:
@@ -250,7 +255,6 @@ class PointCloudDataset(BaseModelNetDataset):
 
     def _create_cache_on_disk(self, cache_dir: Path):
         """Sample and save point clouds to disk"""
-        from src.builders.mesh_3D_builder import Mesh3DBuilder
         from tqdm import tqdm
 
         cache_dir.mkdir(parents=True, exist_ok=True)
@@ -282,15 +286,6 @@ class PointCloudDataset(BaseModelNetDataset):
         points = mesh.sample_points(n_points=self.n_points, method=self.sampling_method)
         return torch.from_numpy(points).float()
 
-    def __getitem__(self, idx: int) -> tuple[torch.Tensor, int]:
-        """Get point cloud with optional transform"""
-        data, label = super().__getitem__(idx)
-
-        if self.transform:
-            data = self.transform(data)
-
-        return data, label
-
 
 class MeshVerticesDataset(BaseModelNetDataset):
     """Dataset returning raw mesh vertices (padded/truncated)"""
@@ -301,11 +296,11 @@ class MeshVerticesDataset(BaseModelNetDataset):
                  max_vertices: int = 2048,
                  train_ratio: float = 0.8,
                  seed: int = 42,
-                 transform: Optional[Callable] = None):
+                 transform: Callable | None = None):
         self.max_vertices = max_vertices
-        self.transform = transform
         super().__init__(root_dir, split, use_existing_split=True,
-                         train_ratio=train_ratio, seed=seed)
+                         train_ratio=train_ratio, seed=seed,
+                         transform=transform)
 
     def _process_mesh(self, mesh: Mesh3D, idx: int) -> torch.Tensor:
         vertices = mesh.vertices
@@ -329,11 +324,11 @@ class MultiRepresentationDataset(BaseModelNetDataset):
                  n_points: int = 1024,
                  train_ratio: float = 0.8,
                  seed: int = 42,
-                 transform: Optional[Callable] = None):
+                 transform: Callable | None = None):
         self.n_points = n_points
-        self.transform = transform
         super().__init__(root_dir, split, use_existing_split=True,
-                         train_ratio=train_ratio, seed=seed)
+                         train_ratio=train_ratio, seed=seed,
+                         transform=transform)
 
     def _process_mesh(self, mesh: Mesh3D, idx: int) -> Dict[str, torch.Tensor]:
         points = mesh.sample_points(n_points=self.n_points)
@@ -342,12 +337,3 @@ class MultiRepresentationDataset(BaseModelNetDataset):
             'num_vertices': torch.tensor(len(mesh.vertices)),
             'num_faces': torch.tensor(len(mesh.faces)),
         }
-
-    def __getitem__(self, idx: int) -> Tuple[Dict[str, torch.Tensor], int]:
-        mesh = Mesh3DBuilder.from_off_file(self.files[idx])
-        data = self._process_mesh(mesh, idx)
-
-        if self.transform:
-            data = self.transform(data)
-
-        return data, self.labels[idx]

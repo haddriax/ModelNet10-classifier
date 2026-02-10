@@ -5,7 +5,7 @@ install:
 	uv pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
 
 train:
-	python -m src.deep_learning.training
+	python -m src.train_classifier
 
 test:
 	python -m pytest tests/

@@ -19,6 +19,12 @@ class TrainingResults(TypedDict):
     final_test_loss: float
     final_test_acc: float
     per_class_accuracies: dict[str, float]
+    per_class_precision: dict[str, float]
+    per_class_recall: dict[str, float]
+    per_class_f1: dict[str, float]
+    macro_precision: float
+    macro_recall: float
+    macro_f1: float
     model_path: str
     best_model_path: str
     total_training_time_seconds: float
@@ -108,16 +114,23 @@ class ModelTrainer:
 
         return avg_loss, accuracy
 
-    def test(self, epoch: int):
+    def test(self, epoch: int) -> dict:
+        """Evaluate model on test set.
+
+        Returns:
+            Dict with keys: loss, accuracy, per_class_accuracies,
+            per_class_precision, per_class_recall, per_class_f1,
+            macro_precision, macro_recall, macro_f1
+        """
         self.model.eval()
         correct = 0
         total = 0
         total_loss = 0
 
-        # For confusion matrix / per-class accuracy
         num_classes = len(self.test_dataset.class_to_idx)
         class_correct = [0] * num_classes
         class_total = [0] * num_classes
+        class_predicted = [0] * num_classes
 
         with torch.no_grad():
             for points, labels in tqdm(self.test_loader, desc="Testing"):
@@ -130,25 +143,56 @@ class ModelTrainer:
                 correct += (predictions == labels).sum().item()
                 total += labels.size(0)
 
-                # Per-class accuracy
                 for label, prediction in zip(labels, predictions):
                     class_total[label] += 1
+                    class_predicted[prediction] += 1
                     if label == prediction:
                         class_correct[label] += 1
 
         avg_loss = total_loss / len(self.test_loader)
         accuracy = correct / total
 
-        # Log per-class accuracy
+        # Per-class metrics
         per_class_acc: dict[str, float] = {}
-        for i in range(num_classes):
-            if class_total[i] > 0:
-                class_acc = class_correct[i] / class_total[i]
-                class_name = self.test_dataset.get_class_name(i)
-                per_class_acc[class_name] = class_acc
-                self.writer.add_scalar(f'Accuracy/class_{class_name}', class_acc, epoch)
+        per_class_precision: dict[str, float] = {}
+        per_class_recall: dict[str, float] = {}
+        per_class_f1: dict[str, float] = {}
 
-        return avg_loss, accuracy, per_class_acc
+        for i in range(num_classes):
+            class_name = self.test_dataset.get_class_name(i)
+
+            acc = class_correct[i] / class_total[i] if class_total[i] > 0 else 0.0
+            precision = class_correct[i] / class_predicted[i] if class_predicted[i] > 0 else 0.0
+            recall = class_correct[i] / class_total[i] if class_total[i] > 0 else 0.0
+            f1 = 2 * precision * recall / (precision + recall) if (precision + recall) > 0 else 0.0
+
+            per_class_acc[class_name] = acc
+            per_class_precision[class_name] = precision
+            per_class_recall[class_name] = recall
+            per_class_f1[class_name] = f1
+
+            self.writer.add_scalar(f'Accuracy/class_{class_name}', acc, epoch)
+            self.writer.add_scalar(f'Precision/class_{class_name}', precision, epoch)
+            self.writer.add_scalar(f'Recall/class_{class_name}', recall, epoch)
+            self.writer.add_scalar(f'F1/class_{class_name}', f1, epoch)
+
+        # Macro averages
+        n = len(per_class_precision)
+        macro_precision = sum(per_class_precision.values()) / n if n > 0 else 0.0
+        macro_recall = sum(per_class_recall.values()) / n if n > 0 else 0.0
+        macro_f1 = sum(per_class_f1.values()) / n if n > 0 else 0.0
+
+        return {
+            "loss": avg_loss,
+            "accuracy": accuracy,
+            "per_class_accuracies": per_class_acc,
+            "per_class_precision": per_class_precision,
+            "per_class_recall": per_class_recall,
+            "per_class_f1": per_class_f1,
+            "macro_precision": macro_precision,
+            "macro_recall": macro_recall,
+            "macro_f1": macro_f1,
+        }
 
     def save_checkpoint(self, epoch: int, test_acc: float, is_best: bool = False):
         """Save model checkpoint"""
@@ -202,23 +246,27 @@ class ModelTrainer:
             print(f"Could not log model graph: {e}")
 
         final_train_loss, final_train_acc = 0.0, 0.0
-        final_test_loss, final_test_acc = 0.0, 0.0
-        final_per_class_acc: dict[str, float] = {}
+        final_test_metrics: dict = {}
 
         for epoch in range(start_epoch, epochs):
             train_loss, train_acc = self.train_epoch(epoch)
-            test_loss, test_acc, per_class_acc = self.test(epoch)
+            test_metrics = self.test(epoch)
 
             # Track final epoch values
             final_train_loss, final_train_acc = train_loss, train_acc
-            final_test_loss, final_test_acc = test_loss, test_acc
-            final_per_class_acc = per_class_acc
+            final_test_metrics = test_metrics
+
+            test_loss = test_metrics["loss"]
+            test_acc = test_metrics["accuracy"]
 
             # Log to TensorBoard
             self.writer.add_scalar('Loss/train', train_loss, epoch)
             self.writer.add_scalar('Loss/test', test_loss, epoch)
             self.writer.add_scalar('Accuracy/train', train_acc, epoch)
             self.writer.add_scalar('Accuracy/test', test_acc, epoch)
+            self.writer.add_scalar('Precision/macro', test_metrics["macro_precision"], epoch)
+            self.writer.add_scalar('Recall/macro', test_metrics["macro_recall"], epoch)
+            self.writer.add_scalar('F1/macro', test_metrics["macro_f1"], epoch)
 
             # Log learning rate
             current_lr = self.optimizer.param_groups[0]['lr']
@@ -226,7 +274,8 @@ class ModelTrainer:
 
             print(f"Epoch {epoch + 1}/{epochs} - "
                   f"Train Loss: {train_loss:.4f}, Train Acc: {train_acc:.4f}, "
-                  f"Test Loss: {test_loss:.4f}, Test Acc: {test_acc:.4f}")
+                  f"Test Loss: {test_loss:.4f}, Test Acc: {test_acc:.4f}, "
+                  f"F1: {test_metrics['macro_f1']:.4f}")
 
             # Save checkpoint
             is_best = test_acc > self.best_test_acc
@@ -244,9 +293,15 @@ class ModelTrainer:
             best_test_acc=self.best_test_acc,
             final_train_acc=final_train_acc,
             final_train_loss=final_train_loss,
-            final_test_loss=final_test_loss,
-            final_test_acc=final_test_acc,
-            per_class_accuracies=final_per_class_acc,
+            final_test_loss=final_test_metrics.get("loss", 0.0),
+            final_test_acc=final_test_metrics.get("accuracy", 0.0),
+            per_class_accuracies=final_test_metrics.get("per_class_accuracies", {}),
+            per_class_precision=final_test_metrics.get("per_class_precision", {}),
+            per_class_recall=final_test_metrics.get("per_class_recall", {}),
+            per_class_f1=final_test_metrics.get("per_class_f1", {}),
+            macro_precision=final_test_metrics.get("macro_precision", 0.0),
+            macro_recall=final_test_metrics.get("macro_recall", 0.0),
+            macro_f1=final_test_metrics.get("macro_f1", 0.0),
             model_path=str(self.save_model_path),
             best_model_path=str(best_model_path),
             total_training_time_seconds=total_time,

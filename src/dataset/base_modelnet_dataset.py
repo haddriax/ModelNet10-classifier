@@ -261,7 +261,7 @@ class PointCloudDataset(BaseModelNetDataset):
         self.cached_data = []
 
         for idx, file_path in enumerate(tqdm(self.files, desc="Caching point clouds")):
-            mesh = Mesh3DBuilder.from_off_file(file_path)
+            mesh: Mesh3D = Mesh3DBuilder.from_off_file(file_path)
             points = mesh.sample_points(n_points=self.n_points, method=self.sampling_method, force_resample=True)
 
             # Save to disk

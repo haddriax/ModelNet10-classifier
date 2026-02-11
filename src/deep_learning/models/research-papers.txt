@@ -1,0 +1,6 @@
+DGCNN:
+https://arxiv.org/abs/1801.07829
+PointNet++:
+https://arxiv.org/abs/1706.02413
+Point Transformer:
+https://arxiv.org/abs/2312.10035

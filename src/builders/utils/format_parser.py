@@ -10,7 +10,6 @@ class OffMeshParser:
         Args:
             lines: Lines from the OFF file
             has_header: Whether the file has 'OFF' header line - should almost always be true
-            delimiter: Delimiter used in the file (default: space)
 
         Returns:
             Tuple of (vertices: np.ndarray, faces: np.ndarray, name: str)

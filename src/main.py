@@ -1,6 +1,6 @@
 import random
 
-from src.geometry.Mesh_3D import Mesh3D
+from src.geometry import Mesh3D
 import open3d as o3d
 from src.builders.mesh_3D_builder import Mesh3DBuilder
 from src.config import DATA_DIR

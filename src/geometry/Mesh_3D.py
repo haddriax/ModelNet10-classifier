@@ -1,28 +1,43 @@
-from enum import Enum
-from typing import Optional
+"""3D mesh representation with point cloud sampling."""
 
 import numpy as np
 import open3d as o3d
 
+from src.geometry.sampling import Sampling
 
-class Sampling(Enum):
-    """Point cloud sampling methods."""
-    UNIFORM = "uniform"
-    POISSON = "poisson"
-    FARTHEST_POINT = "fps"
 
 class Mesh3D:
-    """3D mesh with optional point cloud sampling."""
+    """3D mesh with optional point cloud sampling.
+
+    Wraps vertex/face data with an Open3D TriangleMesh for sampling operations
+    and visualization. Sampled point clouds are cached in-memory.
+
+    Args:
+        vertices: Nx3 array of vertex coordinates
+        faces: Mx3 array of triangular face indices
+        name: Mesh identifier (typically object class)
+
+    Raises:
+        ValueError: If vertices/faces have invalid shape, contain NaN,
+                    or face indices are out of range
+    """
 
     def __init__(self, vertices: np.ndarray, faces: np.ndarray, name: str):
-        """
-        Initialize mesh.
+        # --- Validation ---
+        if vertices.ndim != 2 or vertices.shape[1] != 3:
+            raise ValueError(f"vertices must be Nx3, got shape {vertices.shape}")
+        if vertices.shape[0] == 0:
+            raise ValueError("vertices array must not be empty")
+        if np.any(np.isnan(vertices)):
+            raise ValueError("vertices contain NaN values")
+        if faces.ndim != 2 or faces.shape[1] != 3:
+            raise ValueError(f"faces must be Mx3, got shape {faces.shape}")
+        if faces.shape[0] > 0 and (faces.min() < 0 or faces.max() >= len(vertices)):
+            raise ValueError(
+                f"face indices must be in [0, {len(vertices)}), "
+                f"got range [{faces.min()}, {faces.max()}]"
+            )
 
-        Args:
-            vertices: Nx3 array of vertex coordinates
-            faces: Mx3 array of face indices
-            name: Mesh identifier (typically object class)
-        """
         self.vertices: np.ndarray = vertices
         self.faces: np.ndarray = faces
         self.name: str = name
@@ -35,8 +50,8 @@ class Mesh3D:
 
         # Lazy-loaded point cloud
         # We could use Open3D PointCloud, but for Machine Learning, numpy arrays are better
-        self._point_cloud: Optional[np.ndarray] = None
-        self._sampling_params: Optional[tuple] = None
+        self._point_cloud: np.ndarray | None = None
+        self._sampling_params: tuple | None = None
 
     @property
     def mesh(self) -> o3d.geometry.TriangleMesh:
@@ -44,7 +59,7 @@ class Mesh3D:
         return self.triangle_mesh
 
     @property
-    def point_cloud(self) -> Optional[np.ndarray]:
+    def point_cloud(self) -> np.ndarray | None:
         """Get cached point cloud (None if not yet sampled)."""
         return self._point_cloud
 

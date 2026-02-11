@@ -2,7 +2,7 @@ import re
 from pathlib import Path
 
 from src.builders.utils.format_parser import OffMeshParser
-from src.geometry.Mesh_3D import Mesh3D
+from src.geometry import Mesh3D
 
 
 class Mesh3DBuilder:

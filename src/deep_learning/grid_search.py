@@ -17,7 +17,7 @@ from torch.utils.data import Dataset
 
 from src.config import MODELS_DIR, RESULTS_DIR
 from src.deep_learning.training import ModelTrainer
-from src.geometry.Mesh_3D import Sampling
+from src.geometry import Sampling
 
 
 # Type alias: factory that creates (train_dataset, test_dataset) for given params

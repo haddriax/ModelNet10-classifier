@@ -8,11 +8,11 @@ Results are saved as JSON and matplotlib plots.
 from pathlib import Path
 
 from src.config import DATA_DIR, MODELS_DIR, RESULTS_DIR
-from src.dataset.base_modelnet_dataset import PointCloudDataset
+from src.dataset import PointCloudDataset
 from src.deep_learning.grid_search import GridSearch, GridSearchConfig
 from src.deep_learning.models import ALL_MODELS
 from src.deep_learning.plotting import create_ablation_plots
-from src.geometry.Mesh_3D import Sampling
+from src.geometry import Sampling
 
 
 def make_datasets(

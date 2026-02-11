@@ -49,6 +49,11 @@ def farthest_point_sample(xyz: torch.Tensor, npoint: int) -> torch.Tensor:
     device = xyz.device
     B, N, C = xyz.shape
 
+    # If requesting >= all points, return all indices directly
+    if npoint >= N:
+        idx = torch.arange(N, dtype=torch.long, device=device).unsqueeze(0).expand(B, -1)
+        return idx
+
     centroids = torch.zeros(B, npoint, dtype=torch.long, device=device)
     distance = torch.ones(B, N, device=device) * 1e10
     farthest = torch.randint(0, N, (B,), dtype=torch.long, device=device)
@@ -107,7 +112,8 @@ def query_ball_point(radius: float, nsample: int, xyz: torch.Tensor, new_xyz: to
     group_idx = group_idx.sort(dim=-1)[0][:, :, :nsample]
 
     # Pad incomplete groups by repeating first index
-    group_first = group_idx[:, :, 0].view(B, S, 1).repeat(1, 1, nsample)
+    # Clamp to valid range in case no points fall within radius
+    group_first = group_idx[:, :, 0].clamp(max=N - 1).view(B, S, 1).repeat(1, 1, nsample)
     mask = group_idx == N
     group_idx[mask] = group_first[mask]
 
@@ -223,11 +229,11 @@ class PointNetPP(nn.Module):
 
         # Set Abstraction layers (SSG)
         self.sa1 = PointNetSetAbstraction(
-            npoint=512, radius=0.2, nsample=32,
+            npoint=256, radius=0.2, nsample=32,
             in_channel=3 + 3, mlp=[64, 64, 128],
         )
         self.sa2 = PointNetSetAbstraction(
-            npoint=128, radius=0.4, nsample=64,
+            npoint=64, radius=0.4, nsample=64,
             in_channel=128 + 3, mlp=[128, 128, 256],
         )
         self.sa3 = PointNetSetAbstraction(
@@ -262,8 +268,8 @@ class PointNetPP(nn.Module):
         points = None
 
         # Hierarchical feature learning
-        xyz, points = self.sa1(xyz, points)   # [B, 512, 3], [B, 512, 128]
-        xyz, points = self.sa2(xyz, points)   # [B, 128, 3], [B, 128, 256]
+        xyz, points = self.sa1(xyz, points)   # [B, 256, 3], [B, 256, 128]
+        xyz, points = self.sa2(xyz, points)   # [B, 64, 3],  [B, 64, 256]
         xyz, points = self.sa3(xyz, points)   # [B, 1, 3],   [B, 1, 1024]
 
         x = points.view(points.size(0), -1)   # [B, 1024]

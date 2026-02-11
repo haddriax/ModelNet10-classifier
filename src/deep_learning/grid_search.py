@@ -234,7 +234,7 @@ class GridSearch:
 
             metrics = trainer.train(epochs=config.epochs, resume=False)
 
-            print(f"  \u2713 Best acc: {metrics['best_test_acc']:.4f}  "
+            print(f"  [OK] Best acc: {metrics['best_test_acc']:.4f}  "
                   f"F1: {metrics['macro_f1']:.4f}")
 
             return {
@@ -246,7 +246,7 @@ class GridSearch:
             }
 
         except Exception as e:
-            print(f"  \u2717 ERROR: {e}")
+            print(f"  [FAIL] ERROR: {e}")
             return {
                 "config": config.to_dict(),
                 "run_name": run_name,
@@ -266,3 +266,4 @@ class GridSearch:
         """Create output directories if they don't exist."""
         self.results_dir.mkdir(parents=True, exist_ok=True)
         (self.models_dir / "ablation").mkdir(parents=True, exist_ok=True)
+        Path("runs").mkdir(parents=True, exist_ok=True)

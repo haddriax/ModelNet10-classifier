@@ -1,0 +1,4 @@
+from src.dataset.base_modelnet_dataset import BaseModelNetDataset
+from src.dataset.point_cloud_dataset import PointCloudDataset
+from src.dataset.mesh_vertices_dataset import MeshVerticesDataset
+from src.dataset.multi_representation_dataset import MultiRepresentationDataset

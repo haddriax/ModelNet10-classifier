@@ -4,35 +4,28 @@ public class ScreenshotCapture : MonoBehaviour
 {
     void Update()
     {
-        SetCamera();
-    }
-
-    function SetCamera()
-    {
-        for (cam in Camera.allCameras)
-		    cam.enabled = false;
-	
-        if (Input.GetKeyDown(KeyCode.A))
-	        cam = GameObject.Find("???").GetComponent(Camera);
-
-        if (Input.GetKeyDown(KeyCode.P))
-            cam = GameObject.Find("???").GetComponent(Camera);
-            
-        cam.enabled = true;
-
-        ScreenCapture.CaptureScreenshot("image1.png");
-	    //TakeScreenshot(cam);
-    }
-
-    function TakeScreenshot(cam)
-    {
         if (Input.GetKeyDown(KeyCode.A))
         {
-            ScreenCapture.CaptureScreenshot("image1.png");
+            TakeScreenshot("CameraA", "Assets/image1.png");
         }
         if (Input.GetKeyDown(KeyCode.P))
         {
-            ScreenCapture.CaptureScreenshot("image2.png");
+            TakeScreenshot("CameraP", "Assets/image2.png");
+        }
+    }
+
+    void TakeScreenshot(string cameraName, string fileName)
+    {
+        foreach (Camera cam in Camera.allCameras)
+            cam.enabled = false;
+
+        GameObject camObj = GameObject.Find(cameraName);
+        if (camObj != null)
+        {
+            Camera cam = camObj.GetComponent<Camera>();
+            cam.enabled = true;
+            ScreenCapture.CaptureScreenshot(fileName);
+            Debug.Log("eeee");
         }
     }
 }

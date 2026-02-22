@@ -58,7 +58,7 @@ public class ScreenshotCapture : MonoBehaviour
         foreach (Camera cam in Camera.allCameras)
             cam.enabled = false;
         
-        string fileName = "Assets/ScreenShots" + camObj.name + "_" + objName + ".png";
+        string fileName = "Assets/ScreenShots/" + camObj.name + "_" + objName + ".png";
 
         if (camObj != null)
         {
@@ -66,5 +66,8 @@ public class ScreenshotCapture : MonoBehaviour
             cam.enabled = true;
             ScreenCapture.CaptureScreenshot(fileName);
         }
+
+        foreach (Camera cam in Camera.allCameras)
+        cam.enabled = true;
     }
 }

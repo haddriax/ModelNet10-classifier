@@ -175,6 +175,10 @@ PrefabInstance:
       value: bathtub_0002
       objectReference: {fileID: 0}
     - target: {fileID: 919132149155446097, guid: 8c1edef77ded1c54db291b60ba54782e, type: 3}
+      propertyPath: m_IsActive
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 919132149155446097, guid: 8c1edef77ded1c54db291b60ba54782e, type: 3}
       propertyPath: m_TagString
       value: Object
       objectReference: {fileID: 0}

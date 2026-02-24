@@ -57,16 +57,18 @@ class ModelTrainer:
             patience: Number of epochs without improvement before stopping early.
                       None (default) disables early stopping.
             early_stop_metric: Metric watched by early stopping — ``"accuracy"``
-                               (higher is better) or ``"loss"`` (lower is better).
+                               (higher is better), ``"f1"`` (macro F1, higher is
+                               better), or ``"loss"`` (lower is better).
 
         Raises:
-            ValueError: If ``early_stop_metric`` is not ``"accuracy"`` or ``"loss"``,
-                        or if ``patience`` is not a positive integer when provided.
+            ValueError: If ``early_stop_metric`` is not ``"accuracy"``, ``"f1"``,
+                        or ``"loss"``, or if ``patience`` is not a positive integer
+                        when provided.
         """
         # -- validate new params early ------------------------------------------
-        if early_stop_metric not in ("accuracy", "loss"):
+        if early_stop_metric not in ("accuracy", "f1", "loss"):
             raise ValueError(
-                f"early_stop_metric must be 'accuracy' or 'loss', "
+                f"early_stop_metric must be 'accuracy', 'f1', or 'loss', "
                 f"got {early_stop_metric!r}"
             )
         if patience is not None and not (isinstance(patience, int) and patience >= 1):
@@ -105,16 +107,14 @@ class ModelTrainer:
         self.model = model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         self.criterion = nn.CrossEntropyLoss()
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=50, eta_min=1e-5
-        )
+        self.scheduler = None  # created in train() with the correct T_max
 
         # Early stopping state
         self.patience = patience
         self.early_stop_metric = early_stop_metric
         self._es_counter: int = 0
         self._es_best: float = (
-            0.0 if early_stop_metric == "accuracy" else float("inf")
+            0.0 if early_stop_metric in ("accuracy", "f1") else float("inf")
         )
 
         # TensorBoard setup
@@ -129,7 +129,7 @@ class ModelTrainer:
         # Track best accuracy for saving
         self.best_test_acc = 0.0
 
-    def _es_improved(self, test_acc: float, test_loss: float) -> bool:
+    def _es_improved(self, test_acc: float, test_loss: float, test_f1: float) -> bool:
         """Return True if the tracked metric improved this epoch.
 
         Updates the internal best-value sentinel when improvement is detected.
@@ -137,6 +137,7 @@ class ModelTrainer:
         Args:
             test_acc: Test accuracy for the current epoch.
             test_loss: Test loss for the current epoch.
+            test_f1: Macro F1 score for the current epoch.
 
         Returns:
             True if the chosen metric improved over the previous best.
@@ -145,6 +146,10 @@ class ModelTrainer:
             improved = test_acc > self._es_best
             if improved:
                 self._es_best = test_acc
+        elif self.early_stop_metric == "f1":
+            improved = test_f1 > self._es_best
+            if improved:
+                self._es_best = test_f1
         else:  # "loss"
             improved = test_loss < self._es_best
             if improved:
@@ -370,7 +375,7 @@ class ModelTrainer:
                 self.writer.add_scalar(
                     'EarlyStopping/patience_counter', self._es_counter, epoch
                 )
-                if self._es_improved(test_acc, test_loss):
+                if self._es_improved(test_acc, test_loss, test_metrics["macro_f1"]):
                     self._es_counter = 0
                 else:
                     self._es_counter += 1

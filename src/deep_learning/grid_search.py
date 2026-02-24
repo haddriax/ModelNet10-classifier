@@ -4,7 +4,6 @@ Provides GridSearchConfig, AblationConfig, and GridSearch to orchestrate
 multi-configuration training runs with crash recovery and results persistence.
 """
 
-import json
 from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime
@@ -17,6 +16,7 @@ from torch.utils.data import Dataset
 
 from src.config import MODELS_DIR, RESULTS_DIR
 from src.deep_learning.model_trainer import ModelTrainer
+from src.deep_learning.result_utils import find_best_run, save_json
 from src.geometry import Sampling
 
 
@@ -163,15 +163,7 @@ class GridSearch:
         """
         end_time = datetime.now()
         duration_hours = (end_time - self._start_time).total_seconds() / 3600
-
         completed_runs = [r for r in self._results if r.get("status") == "completed"]
-        best_run = None
-        if completed_runs:
-            best = max(completed_runs, key=lambda r: r["metrics"]["best_test_acc"])
-            best_run = {
-                "run_name": best["run_name"],
-                "best_test_acc": best["metrics"]["best_test_acc"],
-            }
 
         output = {
             "experiment_metadata": {
@@ -183,14 +175,11 @@ class GridSearch:
                 "grid_parameters": self.grid_config.to_dict(),
             },
             "runs": self._results,
-            "best_run": best_run,
+            "best_run": find_best_run(self._results),
         }
 
         output_path = self.results_dir / "ablation_results.json"
-        with open(output_path, 'w') as f:
-            json.dump(output, f, indent=2)
-
-        print(f"\nResults saved to: {output_path}")
+        save_json(output, output_path)
         return output_path
 
     # -- Private methods --
@@ -258,9 +247,7 @@ class GridSearch:
 
     def _save_intermediate(self) -> None:
         """Save intermediate results to disk for crash recovery."""
-        path = self.results_dir / "ablation_results_intermediate.json"
-        with open(path, 'w') as f:
-            json.dump({"runs": self._results}, f, indent=2)
+        save_json({"runs": self._results}, self.results_dir / "ablation_results_intermediate.json")
 
     def _setup_directories(self) -> None:
         """Create output directories if they don't exist."""

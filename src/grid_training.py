@@ -5,48 +5,12 @@ Supports running a full ablation study over
 Results are saved as JSON and matplotlib plots.
 """
 
-from pathlib import Path
-
-from src.config import DATA_DIR, MODELS_DIR, RESULTS_DIR
-from src.dataset import PointCloudDataset
+from src.config import MODELS_DIR, RESULTS_DIR
+from src.deep_learning.dataset_factory import make_datasets
 from src.deep_learning.grid_search import GridSearch, GridSearchConfig
 from src.deep_learning.models import ALL_MODELS
 from src.deep_learning.plotting import create_ablation_plots
 from src.geometry import Sampling
-
-
-def make_datasets(
-    n_points: int,
-    sampling_method: Sampling,
-    data_dir: Path = DATA_DIR,
-) -> tuple[PointCloudDataset, PointCloudDataset]:
-    """Create train/test PointCloudDataset pair.
-
-    Args:
-        n_points: Number of points to sample from each mesh
-        sampling_method: Point sampling strategy
-        data_dir: Path to ModelNet data directory
-
-    Returns:
-        (train_dataset, test_dataset) tuple
-    """
-    train_ds = PointCloudDataset(
-        root_dir=data_dir,
-        split='train',
-        n_points=n_points,
-        sampling_method=sampling_method,
-        use_existing_split=True,
-        cache_processed=True,
-    )
-    test_ds = PointCloudDataset(
-        root_dir=data_dir,
-        split='test',
-        n_points=n_points,
-        sampling_method=sampling_method,
-        use_existing_split=True,
-        cache_processed=True,
-    )
-    return train_ds, test_ds
 
 
 if __name__ == "__main__":
@@ -54,7 +18,6 @@ if __name__ == "__main__":
         model_classes=[
             ALL_MODELS['PointNet'],
             ALL_MODELS['PointNetPP'],
-            # ALL_MODELS['DGCNN']
         ],
         sampling_methods=[Sampling.UNIFORM, Sampling.FARTHEST_POINT],
         n_points_list=[2048],

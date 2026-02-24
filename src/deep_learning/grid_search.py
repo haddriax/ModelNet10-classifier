@@ -16,7 +16,7 @@ from torch import nn
 from torch.utils.data import Dataset
 
 from src.config import MODELS_DIR, RESULTS_DIR
-from src.deep_learning.training import ModelTrainer
+from src.deep_learning.model_trainer import ModelTrainer
 from src.geometry import Sampling
 
 

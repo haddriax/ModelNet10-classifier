@@ -1,6 +1,6 @@
 [project]
 name = "modelnet10-classifier-dl"
-version = "0.1.0"
+version = "0.2.0"
 description = "Classifier with multiple deep learning models for ModelNet10 dataset"
 requires-python = ">=3.12"
 dependencies = [

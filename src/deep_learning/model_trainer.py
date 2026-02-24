@@ -32,21 +32,54 @@ class TrainingResults(TypedDict):
 
 
 class ModelTrainer:
-    def __init__(self, train_dataset: Dataset,
-                 test_dataset: Dataset,
-                 model: nn.Module,
-                 save_model: Path,
-                 batch_size: int = 32,
-                 experiment_name: str = None):
+    def __init__(
+        self,
+        train_dataset: Dataset,
+        test_dataset: Dataset,
+        model: nn.Module,
+        save_model: Path,
+        batch_size: int = 32,
+        experiment_name: str = None,
+        lr: float | None = None,
+        patience: int | None = None,
+        early_stop_metric: str = "accuracy",
+    ):
+        """Initialise the trainer.
+
+        Args:
+            train_dataset: Training dataset.
+            test_dataset: Test / validation dataset.
+            model: The nn.Module to train.
+            save_model: Path where the latest checkpoint is written.
+            batch_size: Mini-batch size for both loaders.
+            experiment_name: TensorBoard run name (auto-generated if None).
+            lr: Learning rate override.  If None, uses ``0.001 * (batch_size / 32)``.
+            patience: Number of epochs without improvement before stopping early.
+                      None (default) disables early stopping.
+            early_stop_metric: Metric watched by early stopping — ``"accuracy"``
+                               (higher is better) or ``"loss"`` (lower is better).
+
+        Raises:
+            ValueError: If ``early_stop_metric`` is not ``"accuracy"`` or ``"loss"``,
+                        or if ``patience`` is not a positive integer when provided.
+        """
+        # -- validate new params early ------------------------------------------
+        if early_stop_metric not in ("accuracy", "loss"):
+            raise ValueError(
+                f"early_stop_metric must be 'accuracy' or 'loss', "
+                f"got {early_stop_metric!r}"
+            )
+        if patience is not None and not (isinstance(patience, int) and patience >= 1):
+            raise ValueError(
+                f"patience must be a positive integer, got {patience!r}"
+            )
+
         self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         print(f"{self.__class__.__name__}: Using {str(self.device)}")
 
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
         self.save_model_path = save_model
-
-        # Create parent directory if it doesn't exist
-        self.save_model_path.parent.mkdir(parents=True, exist_ok=True)
 
         self.train_loader = DataLoader(
             train_dataset,
@@ -67,11 +100,22 @@ class ModelTrainer:
         )
 
         base_lr = 0.001
-        self.lr = base_lr * (batch_size / 32)
+        self.lr = lr if lr is not None else base_lr * (batch_size / 32)
 
         self.model = model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
         self.criterion = nn.CrossEntropyLoss()
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, T_max=50, eta_min=1e-5
+        )
+
+        # Early stopping state
+        self.patience = patience
+        self.early_stop_metric = early_stop_metric
+        self._es_counter: int = 0
+        self._es_best: float = (
+            0.0 if early_stop_metric == "accuracy" else float("inf")
+        )
 
         # TensorBoard setup
         if experiment_name is None:
@@ -84,6 +128,28 @@ class ModelTrainer:
 
         # Track best accuracy for saving
         self.best_test_acc = 0.0
+
+    def _es_improved(self, test_acc: float, test_loss: float) -> bool:
+        """Return True if the tracked metric improved this epoch.
+
+        Updates the internal best-value sentinel when improvement is detected.
+
+        Args:
+            test_acc: Test accuracy for the current epoch.
+            test_loss: Test loss for the current epoch.
+
+        Returns:
+            True if the chosen metric improved over the previous best.
+        """
+        if self.early_stop_metric == "accuracy":
+            improved = test_acc > self._es_best
+            if improved:
+                self._es_best = test_acc
+        else:  # "loss"
+            improved = test_loss < self._es_best
+            if improved:
+                self._es_best = test_loss
+        return improved
 
     def train_epoch(self, epoch: int):
         self.model.train()
@@ -196,10 +262,12 @@ class ModelTrainer:
 
     def save_checkpoint(self, epoch: int, test_acc: float, is_best: bool = False):
         """Save model checkpoint"""
+        self.save_model_path.parent.mkdir(parents=True, exist_ok=True)
         checkpoint = {
             'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict(),
             'test_acc': test_acc,
             'best_test_acc': self.best_test_acc,
         }
@@ -225,6 +293,8 @@ class ModelTrainer:
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if 'scheduler_state_dict' in checkpoint:
+            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         self.best_test_acc = checkpoint.get('best_test_acc', 0.0)
 
         print(f"Loaded checkpoint from epoch {checkpoint['epoch']}")
@@ -238,19 +308,29 @@ class ModelTrainer:
         if resume:
             start_epoch = self.load_checkpoint()
 
+        # Reinitialize scheduler with the correct T_max for this training run
+        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
+            self.optimizer, T_max=epochs - start_epoch, eta_min=1e-5
+        )
+
         # Log model graph (only once)
         try:
-            dummy_input = torch.randn(1, 1024, 3).to(self.device)
+            sample_points, _ = self.train_dataset[0]
+            n_points = sample_points.shape[0]
+            dummy_input = torch.randn(1, n_points, 3).to(self.device)
             self.writer.add_graph(self.model, dummy_input)
         except Exception as e:
             print(f"Could not log model graph: {e}")
 
         final_train_loss, final_train_acc = 0.0, 0.0
         final_test_metrics: dict = {}
+        epochs_actually_trained = 0
 
         for epoch in range(start_epoch, epochs):
             train_loss, train_acc = self.train_epoch(epoch)
             test_metrics = self.test(epoch)
+
+            epochs_actually_trained += 1
 
             # Track final epoch values
             final_train_loss, final_train_acc = train_loss, train_acc
@@ -283,6 +363,24 @@ class ModelTrainer:
                 self.best_test_acc = test_acc
 
             self.save_checkpoint(epoch, test_acc, is_best)
+            self.scheduler.step()
+
+            # Early stopping check
+            if self.patience is not None:
+                self.writer.add_scalar(
+                    'EarlyStopping/patience_counter', self._es_counter, epoch
+                )
+                if self._es_improved(test_acc, test_loss):
+                    self._es_counter = 0
+                else:
+                    self._es_counter += 1
+                    print(
+                        f"  EarlyStopping: no improvement for "
+                        f"{self._es_counter}/{self.patience} epochs"
+                    )
+                    if self._es_counter >= self.patience:
+                        print(f"  EarlyStopping: stopping at epoch {epoch + 1}")
+                        break
 
         total_time = time.time() - start_time
         best_model_path = (self.save_model_path.parent /
@@ -305,7 +403,7 @@ class ModelTrainer:
             model_path=str(self.save_model_path),
             best_model_path=str(best_model_path),
             total_training_time_seconds=total_time,
-            epochs_trained=epochs - start_epoch,
+            epochs_trained=epochs_actually_trained,
         )
 
         # Final save

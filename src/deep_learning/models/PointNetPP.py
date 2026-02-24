@@ -113,7 +113,8 @@ def query_ball_point(radius: float, nsample: int, xyz: torch.Tensor, new_xyz: to
 
     # Pad incomplete groups by repeating first index
     # Clamp to valid range in case no points fall within radius
-    group_first = group_idx[:, :, 0].clamp(max=N - 1).view(B, S, 1).repeat(1, 1, nsample)
+    max_idx = torch.tensor(N - 1, dtype=torch.long, device=device)
+    group_first = torch.min(group_idx[:, :, 0], max_idx).view(B, S, 1).repeat(1, 1, nsample)
     mask = group_idx == N
     group_idx[mask] = group_first[mask]
 

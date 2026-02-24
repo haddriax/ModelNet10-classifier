@@ -50,13 +50,16 @@ def make_datasets(
 
 
 if __name__ == "__main__":
-    # Grid search parameters
     config = GridSearchConfig(
-        model_classes=list(ALL_MODELS.values()),
-        sampling_methods=[Sampling.UNIFORM],
-        n_points_list=[512],
+        model_classes=[
+            ALL_MODELS['PointNet'],
+            ALL_MODELS['PointNetPP'],
+            # ALL_MODELS['DGCNN']
+        ],
+        sampling_methods=[Sampling.UNIFORM, Sampling.FARTHEST_POINT],
+        n_points_list=[2048],
         batch_sizes=[32],
-        epochs=10,
+        epochs=50,
     )
 
     search = GridSearch(
@@ -68,16 +71,10 @@ if __name__ == "__main__":
 
     print(f"Generated {search.num_configs} configurations for ablation study")
 
-    # Run ablation
     results = search.run()
-
-    # Save results
     results_path = search.save_results()
-
-    # Generate plots
     create_ablation_plots(results_path)
 
-    # Print summary
     completed = [r for r in results if r.get("status") == "completed"]
     if completed:
         best = max(completed, key=lambda r: r["metrics"]["best_test_acc"])

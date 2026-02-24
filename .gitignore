@@ -209,3 +209,18 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 /data/
+
+
+# Unity
+unity/Visual_V0/Library/
+unity/Visual_V0/Temp/
+unity/Visual_V0/Logs/
+unity/Visual_V0/obj/
+unity/Visual_V0/Build/
+unity/Visual_V0/Builds/
+unity/Visual_V0/UserSettings/
+unity/Visual_V0/*.tmp
+unity/Visual_V0/.vscode/
+unity/Visual_V0/*.sln  
+unity/Visual_V0/Assets/Resources
+unity/Visual_V0/Assets/ScreenShots

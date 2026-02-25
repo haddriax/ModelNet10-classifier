@@ -14,26 +14,20 @@ if __name__ == "__main__":
         "PointNet":         ModelConfig(
             sampling="uniform",
             lr=0.001,
-            patience=8,
-            early_stop_metric="f1",
-            epochs=10
+            patience=10,
+            early_stop_metric="loss",
+            epochs=100
         ),
         # "SimplePointNet": ModelConfig(sampling="uniform"),
         # "DGCNN":          ModelConfig(sampling="fps"),
         "PointNetPP":       ModelConfig(
             sampling="uniform",
             lr=0.001,
-            patience=18,
-            early_stop_metric="f1",
-            epochs=20,
+            patience=12,
+            early_stop_metric="loss",
+            epochs=200,
         ),
-        "PointTransformer": ModelConfig(
-            sampling="uniform",
-            lr=0.001,
-            patience=8,
-            early_stop_metric="f1",
-            epochs=30,
-        ),
+        # "PointTransformer": ModelConfig(sampling="uniform"),
     }
 
     run_sequential(

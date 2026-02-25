@@ -10,6 +10,8 @@ from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 from datetime import datetime
 
+from src.deep_learning.configs import OptimizerFactory, SchedulerFactory
+
 
 class TrainingResults(TypedDict):
     """Results returned by ModelTrainer.train()"""
@@ -43,6 +45,8 @@ class ModelTrainer:
         lr: float | None = None,
         patience: int | None = None,
         early_stop_metric: str = "accuracy",
+        optimizer_factory: OptimizerFactory | None = None,
+        scheduler_factory: SchedulerFactory | None = None,
     ):
         """Initialise the trainer.
 
@@ -59,6 +63,13 @@ class ModelTrainer:
             early_stop_metric: Metric watched by early stopping — ``"accuracy"``
                                (higher is better), ``"f1"`` (macro F1, higher is
                                better), or ``"loss"`` (lower is better).
+            optimizer_factory: Callable ``(parameters, lr) -> Optimizer``.
+                               ``None`` → :class:`torch.optim.Adam`.
+                               See :data:`~src.deep_learning.configs.OptimizerFactory`.
+            scheduler_factory: Callable ``(optimizer, epochs_remaining) -> LRScheduler``.
+                               ``None`` → :class:`~torch.optim.lr_scheduler.CosineAnnealingLR`
+                               with ``T_max=epochs_remaining`` and ``eta_min=1e-5``.
+                               See :data:`~src.deep_learning.configs.SchedulerFactory`.
 
         Raises:
             ValueError: If ``early_stop_metric`` is not ``"accuracy"``, ``"f1"``,
@@ -89,8 +100,8 @@ class ModelTrainer:
             shuffle=True,
             num_workers=4,
             prefetch_factor=2,
-            pin_memory=True
-
+            pin_memory=True,
+            persistent_workers=True,  # keep workers alive between epochs
         )
         self.test_loader = DataLoader(
             test_dataset,
@@ -98,16 +109,24 @@ class ModelTrainer:
             shuffle=False,
             num_workers=2,
             prefetch_factor=2,
-            pin_memory=True
+            pin_memory=True,
+            persistent_workers=True,  # keep workers alive between epochs
         )
 
         base_lr = 0.001
         self.lr = lr if lr is not None else base_lr * (batch_size / 32)
 
+        self._optimizer_factory = optimizer_factory
+        self._scheduler_factory = scheduler_factory
+
         self.model = model.to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        self.optimizer = (
+            optimizer_factory(self.model.parameters(), self.lr)
+            if optimizer_factory is not None
+            else torch.optim.Adam(self.model.parameters(), lr=self.lr)
+        )
         self.criterion = nn.CrossEntropyLoss()
-        self.scheduler = None  # created in train() with the correct T_max
+        self.scheduler = None  # created in train() with the correct epochs_remaining
 
         # Early stopping state
         self.patience = patience
@@ -122,7 +141,7 @@ class ModelTrainer:
             experiment_name = f"pointnet_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         log_dir = Path("runs") / experiment_name
-        self.writer = SummaryWriter(log_dir)
+        self.writer = SummaryWriter(str(log_dir))
         print(f"TensorBoard logs: {log_dir}")
         print(f"Run: tensorboard --logdir=runs")
 
@@ -199,8 +218,8 @@ class ModelTrainer:
         total_loss = 0
 
         num_classes = len(self.test_dataset.class_to_idx)
-        class_correct = [0] * num_classes
-        class_total = [0] * num_classes
+        class_correct   = [0] * num_classes
+        class_total     = [0] * num_classes
         class_predicted = [0] * num_classes
 
         with torch.no_grad():
@@ -214,11 +233,15 @@ class ModelTrainer:
                 correct += (predictions == labels).sum().item()
                 total += labels.size(0)
 
-                for label, prediction in zip(labels, predictions):
-                    class_total[label] += 1
-                    class_predicted[prediction] += 1
-                    if label == prediction:
-                        class_correct[label] += 1
+                # Vectorised per-class accumulation (avoids Python loop per sample)
+                hits = labels[labels == predictions]
+                batch_total     = torch.bincount(labels,      minlength=num_classes).tolist()
+                batch_predicted = torch.bincount(predictions, minlength=num_classes).tolist()
+                batch_correct   = torch.bincount(hits,        minlength=num_classes).tolist()
+                for cls in range(num_classes):
+                    class_total[cls]     += batch_total[cls]
+                    class_predicted[cls] += batch_predicted[cls]
+                    class_correct[cls]   += batch_correct[cls]
 
         avg_loss = total_loss / len(self.test_loader)
         accuracy = correct / total
@@ -272,7 +295,7 @@ class ModelTrainer:
             'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler is not None else None,
             'test_acc': test_acc,
             'best_test_acc': self.best_test_acc,
         }
@@ -298,7 +321,7 @@ class ModelTrainer:
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        if 'scheduler_state_dict' in checkpoint:
+        if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         self.best_test_acc = checkpoint.get('best_test_acc', 0.0)
 
@@ -313,9 +336,14 @@ class ModelTrainer:
         if resume:
             start_epoch = self.load_checkpoint()
 
-        # Reinitialize scheduler with the correct T_max for this training run
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=epochs - start_epoch, eta_min=1e-5
+        # Create scheduler with the correct epochs_remaining for this training run
+        epochs_remaining = epochs - start_epoch
+        self.scheduler = (
+            self._scheduler_factory(self.optimizer, epochs_remaining)
+            if self._scheduler_factory is not None
+            else torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer, T_max=epochs_remaining, eta_min=1e-5
+            )
         )
 
         # Log model graph (only once)
@@ -362,12 +390,11 @@ class ModelTrainer:
                   f"Test Loss: {test_loss:.4f}, Test Acc: {test_acc:.4f}, "
                   f"F1: {test_metrics['macro_f1']:.4f}")
 
-            # Save checkpoint
+            # Save checkpoint only when accuracy improves
             is_best = test_acc > self.best_test_acc
             if is_best:
                 self.best_test_acc = test_acc
-
-            self.save_checkpoint(epoch, test_acc, is_best)
+                self.save_checkpoint(epoch, test_acc, is_best=True)
             self.scheduler.step()
 
             # Early stopping check

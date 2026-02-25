@@ -30,7 +30,7 @@ from datetime import datetime
 from pathlib import Path
 
 from src.config import DATA_DIR, MODELS_DIR, RESULTS_DIR
-from src.deep_learning.configs import ModelConfig
+from src.deep_learning.configs import ModelConfig, OptimizerFactory, SchedulerFactory
 from src.deep_learning.dataset_factory import make_datasets
 from src.deep_learning.model_trainer import ModelTrainer
 from src.deep_learning.models import ALL_MODELS
@@ -88,6 +88,8 @@ def _run_one(
     effective_patience: int | None,
     effective_metric: str,
     effective_epochs: int,
+    effective_optimizer_factory: OptimizerFactory | None,
+    effective_scheduler_factory: SchedulerFactory | None,
     dataset_cache: dict,
     models_dir: Path,
     data_dir: Path,
@@ -105,6 +107,8 @@ def _run_one(
         effective_patience: Early-stopping patience (``None`` = disabled).
         effective_metric: Early-stopping metric name.
         effective_epochs: Number of training epochs for this run.
+        effective_optimizer_factory: Optimizer factory, or ``None`` → Adam default.
+        effective_scheduler_factory: Scheduler factory, or ``None`` → CosineAnnealingLR default.
         dataset_cache: Shared cache dict keyed by ``(n_points, sampling_str)``.
         models_dir: Root directory for model checkpoints.
         data_dir: Root directory of ModelNet10 data.
@@ -153,6 +157,8 @@ def _run_one(
             lr=effective_lr,
             patience=effective_patience,
             early_stop_metric=effective_metric,
+            optimizer_factory=effective_optimizer_factory,
+            scheduler_factory=effective_scheduler_factory,
         )
 
         metrics = trainer.train(epochs=effective_epochs, resume=False)
@@ -287,11 +293,13 @@ def run_sequential(
     results: list[dict] = []
 
     for idx, (model_name, model_cfg) in enumerate(configs.items(), start=1):
-        # Resolve per-model overrides (None → fall back to global value)
-        effective_lr       = model_cfg.lr                if model_cfg.lr                is not None else lr
-        effective_patience = model_cfg.patience          if model_cfg.patience          is not None else patience
-        effective_metric   = model_cfg.early_stop_metric if model_cfg.early_stop_metric is not None else early_stop_metric
-        effective_epochs   = model_cfg.epochs            if model_cfg.epochs            is not None else epochs
+        # Resolve per-model overrides (None → fall back to global / ModelTrainer default)
+        effective_lr                = model_cfg.lr                if model_cfg.lr                is not None else lr
+        effective_patience          = model_cfg.patience          if model_cfg.patience          is not None else patience
+        effective_metric            = model_cfg.early_stop_metric if model_cfg.early_stop_metric is not None else early_stop_metric
+        effective_epochs            = model_cfg.epochs            if model_cfg.epochs            is not None else epochs
+        effective_optimizer_factory = model_cfg.optimizer_factory  # None → ModelTrainer default (Adam)
+        effective_scheduler_factory = model_cfg.scheduler_factory  # None → ModelTrainer default (CosineAnnealingLR)
 
         results.append(_run_one(
             model_name, model_cfg,
@@ -301,6 +309,8 @@ def run_sequential(
             effective_patience=effective_patience,
             effective_metric=effective_metric,
             effective_epochs=effective_epochs,
+            effective_optimizer_factory=effective_optimizer_factory,
+            effective_scheduler_factory=effective_scheduler_factory,
             dataset_cache=dataset_cache,
             models_dir=models_dir,
             data_dir=data_dir,

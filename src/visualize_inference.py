@@ -1,8 +1,8 @@
-"""Interactive 3D inference visualizer for ModelNet10 classifiers.
+"""Interactive 3D inference visualizer for ModelNet classifiers (ModelNet10 / ModelNet40).
 
 Loads a trained checkpoint from an interactive terminal menu, then displays
 random test samples in Open3D (wireframe + point cloud) while running live
-inference. Press SPACE for the next sample, Q to quit.
+inference. Press SPACE for the next sample, A to quit.
 
 Entry point:
     python -m src.visualize_inference
@@ -18,7 +18,7 @@ import torch
 import torch.nn.functional as F
 
 from src.builders.mesh_3D_builder import Mesh3DBuilder
-from src.config import DATA_DIR, MODELS_DIR
+from src.config import DATA_DIR, MODELNET40_DIR, MODELS_DIR
 from src.dataset.point_cloud_dataset import PointCloudDataset
 from src.deep_learning.models import ALL_MODELS
 from src.geometry import Sampling
@@ -38,6 +38,30 @@ _CKPT_PATTERN = re.compile(
     r'^([A-Za-z]+(?:PP)?)_(uniform|fps|poisson)_pts(\d+)_bs\d+',
     re.IGNORECASE,
 )
+
+
+_DATASET_MAP: dict[str, tuple[Path, int]] = {
+    "modelnet10": (DATA_DIR,       10),
+    "modelnet40": (MODELNET40_DIR, 40),
+}
+
+
+def detect_dataset_from_path(path: Path) -> tuple[Path, int] | None:
+    """Infer data_dir and num_classes from the checkpoint's directory tree.
+
+    Looks for 'modelnet10' or 'modelnet40' among the path components.
+
+    Args:
+        path: Path to the checkpoint file.
+
+    Returns:
+        (data_dir, num_classes) if a known dataset name is found, else None.
+    """
+    for part in path.parts:
+        key = part.lower()
+        if key in _DATASET_MAP:
+            return _DATASET_MAP[key]
+    return None
 
 
 def scan_checkpoints(models_dir: Path) -> list[Path]:
@@ -154,7 +178,7 @@ def resolve_config_interactively(
 def load_model_from_checkpoint(
     path: Path,
     model_class: type,
-    num_classes: int = 10,
+    num_classes: int,
     device: torch.device | None = None,
 ) -> torch.nn.Module:
     """Instantiate model and load weights from checkpoint.
@@ -162,7 +186,7 @@ def load_model_from_checkpoint(
     Args:
         path: Path to .pth checkpoint file.
         model_class: The nn.Module subclass to instantiate.
-        num_classes: Number of output classes.
+        num_classes: Number of output classes (10 for ModelNet10, 40 for ModelNet40).
         device: Target device (defaults to CUDA if available).
 
     Returns:
@@ -193,7 +217,16 @@ def run_inference(
     Returns:
         (predicted_class_index, confidence_score in [0, 1])
     """
-    x = torch.from_numpy(points_np).float().unsqueeze(0).to(device)  # [1, N, 3]
+    x = torch.from_numpy(points_np).float()
+
+    # Unit-sphere normalisation — must match PointCloudDataset._normalize_point_cloud
+    centroid = x.mean(dim=0)
+    x = x - centroid
+    max_dist = x.norm(dim=1).max()
+    if max_dist > 0:
+        x = x / max_dist
+
+    x = x.unsqueeze(0).to(device)  # [1, N, 3]
     with torch.no_grad():
         logits = model(x)
     probs = F.softmax(logits, dim=1)
@@ -299,7 +332,7 @@ def run_visualizer(
             f"  (confidence: {confidence * 100:.1f}%)"
         )
         print(sep)
-        print("Press SPACE for next sample  |  Q to quit")
+        print("Press SPACE for next sample  |  A to quit")
 
         return False
 
@@ -319,7 +352,7 @@ def run_visualizer(
 
     # Register keyboard callbacks
     vis.register_key_callback(32, on_spacebar)          # SPACE
-    vis.register_key_callback(ord("Q"), on_quit)        # Q
+    vis.register_key_callback(ord("A"), on_quit)        # A
     vis.register_key_callback(256, on_quit)             # Escape (GLFW_KEY_ESCAPE)
 
     # Load the first sample
@@ -352,12 +385,27 @@ def main() -> None:
         f"\nCheckpoint: {selected}"
     )
 
+    # 3b. Detect dataset → data_dir + num_classes
+    detected = detect_dataset_from_path(selected)
+    if detected is not None:
+        data_dir, num_classes = detected
+    else:
+        # Fallback for checkpoints outside the standard path structure
+        print("\nCould not detect dataset from checkpoint path.")
+        valid = list(_DATASET_MAP.keys())
+        while True:
+            raw = input(f"Dataset ({'/'.join(valid)}): ").strip().lower()
+            if raw in _DATASET_MAP:
+                data_dir, num_classes = _DATASET_MAP[raw]
+                break
+            print(f"  Choose from: {', '.join(valid)}")
+
     # 4. Load model weights
-    model = load_model_from_checkpoint(selected, model_class, device=device)
+    model = load_model_from_checkpoint(selected, model_class, num_classes=num_classes, device=device)
 
     # 5. Build test dataset (cache_processed=True re-uses cached test points)
     dataset = PointCloudDataset(
-        root_dir=DATA_DIR,
+        root_dir=data_dir,
         split='test',
         n_points=n_points,
         sampling_method=sampling,
@@ -369,7 +417,7 @@ def main() -> None:
         print("Test dataset is empty — check DATA_DIR and split folders.")
         sys.exit(1)
 
-    print(f"\nPress SPACE to cycle through random test samples | Q to quit\n")
+    print(f"\nPress SPACE to cycle through random test samples | A to quit\n")
 
     # 6. Launch interactive visualizer
     run_visualizer(model, dataset, n_points, sampling, model_name, device)

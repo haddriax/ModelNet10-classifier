@@ -2,10 +2,16 @@
 name = "modelnet10-classifier-dl"
 version = "0.2.0"
 description = "Classifier with multiple deep learning models for ModelNet10 dataset"
-requires-python = ">=3.12"
+requires-python = ">=3.12,<3.13"
 dependencies = [
     "open3d",
     "numpy",
     "tensorboard",
-    "tqdm"
+    "tqdm",
+    "torch==2.6.0+cu126",
+    "torchvision==0.21.0+cu126",
 ]
+
+[tool.uv.sources]
+torch = { url = "https://download.pytorch.org/whl/cu126/torch-2.6.0%2Bcu126-cp312-cp312-win_amd64.whl" }
+torchvision = { url = "https://download.pytorch.org/whl/cu126/torchvision-0.21.0%2Bcu126-cp312-cp312-win_amd64.whl" }

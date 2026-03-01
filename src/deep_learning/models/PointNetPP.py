@@ -230,11 +230,11 @@ class PointNetPP(nn.Module):
 
         # Set Abstraction layers (SSG)
         self.sa1 = PointNetSetAbstraction(
-            npoint=256, radius=0.2, nsample=32,
+            npoint=512, radius=0.2, nsample=32,
             in_channel=3 + 3, mlp=[64, 64, 128],
         )
         self.sa2 = PointNetSetAbstraction(
-            npoint=64, radius=0.4, nsample=64,
+            npoint=128, radius=0.4, nsample=64,
             in_channel=128 + 3, mlp=[128, 128, 256],
         )
         self.sa3 = PointNetSetAbstraction(
@@ -269,8 +269,8 @@ class PointNetPP(nn.Module):
         points = None
 
         # Hierarchical feature learning
-        xyz, points = self.sa1(xyz, points)   # [B, 256, 3], [B, 256, 128]
-        xyz, points = self.sa2(xyz, points)   # [B, 64, 3],  [B, 64, 256]
+        xyz, points = self.sa1(xyz, points)   # [B, 512, 3], [B, 512, 128]
+        xyz, points = self.sa2(xyz, points)   # [B, 128, 3], [B, 128, 256]
         xyz, points = self.sa3(xyz, points)   # [B, 1, 3],   [B, 1, 1024]
 
         x = points.view(points.size(0), -1)   # [B, 1024]

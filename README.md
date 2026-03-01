@@ -35,6 +35,9 @@ python -m src.grid_training
 # Inference visualiser  (interactive menu → pick checkpoint → 3D viewer with live predictions)
 python -m src.visualize_inference
 
+# Regenerate plots from a past run without retraining
+python -m src.rebuild_figures
+
 # Monitor training in real time
 tensorboard --logdir=runs
 ```
@@ -195,6 +198,16 @@ Sequential benchmark on **ModelNet40** (40 classes, 1 024 points, batch size 32)
 ![Sequential model comparison on ModelNet40](images/sequential_model_comparison.png)
 
 Results and plots are saved per run under `results/sequential/{dataset}/{timestamp}/` — older runs are never overwritten. Model checkpoints are saved under `models/sequential/{dataset}/{timestamp}/`.
+
+### Regenerating plots
+
+To refresh or add plots without retraining, run:
+
+```bash
+python -m src.rebuild_figures
+```
+
+The script lists every `sequential_results.json` found under `results/sequential/` (newest first), lets you pick one or regenerate all, and re-runs the full `plot_sequential_results()` pipeline on the selected JSON. This is the intended workflow after editing `src/deep_learning/plotting.py`.
 
 ---
 

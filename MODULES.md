@@ -171,7 +171,7 @@ results = trainer.train(epochs=200)   # → TrainingResults TypedDict
 Trains every model in `configs` one after another. Key details:
 - **Dataset cache** — datasets are shared across models that use the same `(n_points, sampling)` pair, avoiding redundant re-building.
 - **`num_classes` is dynamic** — inferred as `len(train_ds.class_to_idx)` after dataset construction; no hardcoding.
-- **Output** — saves `sequential_results.json` and three comparison plots (model comparison, per-class accuracy, per-class F1) to `results_dir`.
+- **Output** — saves `sequential_results.json` and four comparison plots (model comparison, per-class accuracy, per-class F1, training efficiency) to `results_dir`.
 - **Checkpoint paths** — `models_dir / f"{run_name}.pth"`.
 
 The entry point `src/sequential_training.py` builds timestamped paths:
@@ -207,7 +207,8 @@ Iterates every combination, caches datasets by `(n_points, sampling)`, and saves
 
 | Function | Output files | Used by |
 |---|---|---|
-| `plot_sequential_results(results_path)` | `sequential_model_comparison.png`, `sequential_per_class_accuracy.png`, `sequential_per_class_f1.png` | `run_sequential()` |
+| `plot_sequential_results(results_path)` | `sequential_model_comparison.png`, `sequential_per_class_accuracy.png`, `sequential_per_class_f1.png`, `sequential_training_efficiency.png` | `run_sequential()`, `rebuild_figures.py` |
+| `plot_training_efficiency(runs, output_dir, plt)` | `sequential_training_efficiency.png` | called by `plot_sequential_results()` |
 | `create_ablation_plots(results_path)` | `accuracy_comparison.png`, `npoints_effect.png`, `batchsize_effect.png`, `sampling_comparison.png`, `model_heatmap.png` | `GridSearch` |
 
 All plots are written to the same directory as the JSON file, or to `output_dir` if provided.
@@ -222,3 +223,4 @@ All plots are written to the same directory as the JSON file, or to `output_dir`
 | `src/sequential_training.py` | `python -m src.sequential_training [--dataset modelnet10\|modelnet40]` | Train all models sequentially with curated hyperparameters |
 | `src/grid_training.py` | `python -m src.grid_training` | Full ablation over model × sampling × n_points × batch_size |
 | `src/visualize_inference.py` | `python -m src.visualize_inference` | Load a trained checkpoint, run inference on test meshes, visualise in 3D |
+| `src/rebuild_figures.py` | `python -m src.rebuild_figures` | Re-run `plot_sequential_results()` on any past JSON without retraining — useful after editing `plotting.py` |

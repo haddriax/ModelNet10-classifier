@@ -257,6 +257,7 @@ def plot_sequential_results(results_path: Path, output_dir: Path | None = None) 
                            title="Per-Class F1 Score by Model",
                            filename="sequential_per_class_f1.png",
                            colorbar_label="Class F1 (%)")
+    plot_training_efficiency(runs, output_dir, plt)
 
     print(f"Plots saved to: {output_dir}")
 
@@ -383,6 +384,64 @@ def plot_per_class_heatmap(
     ax.set_title(title)
     plt.tight_layout()
     plt.savefig(output_dir / filename, dpi=150)
+    plt.close()
+
+
+def plot_training_efficiency(runs: list[dict], output_dir: Path, plt) -> None:
+    """Dual-axis chart: epochs trained (bars) and wall-clock time (line) per model.
+
+    Args:
+        runs: List of completed run result dicts.
+        output_dir: Directory to save the plot.
+        plt: The matplotlib.pyplot module (passed by caller).
+    """
+    import numpy as np
+
+    model_colors = _get_model_colors()
+    model_names  = [r["config"]["model"] for r in runs]
+    epochs_list  = [r["metrics"]["epochs_trained"] for r in runs]
+    time_minutes = [r["metrics"]["total_training_time_seconds"] / 60 for r in runs]
+    colors       = [model_colors.get(m, "#999999") for m in model_names]
+
+    x = np.arange(len(model_names))
+    fig, ax1 = plt.subplots(figsize=(max(8, len(runs) * 1.6), 6))
+
+    bars = ax1.bar(x, epochs_list, color=colors, alpha=0.8, label="Epochs trained")
+    ax1.set_ylabel("Epochs trained")
+    ax1.set_xticks(x)
+    ax1.set_xticklabels(model_names, rotation=15, ha="right")
+    ax1.set_ylim(0, max(epochs_list) * 1.2)
+
+    for bar, ep in zip(bars, epochs_list):
+        ax1.text(
+            bar.get_x() + bar.get_width() / 2,
+            bar.get_height() / 2,
+            str(ep),
+            ha="center", va="center", fontsize=9, fontweight="bold", color="white",
+        )
+
+    ax2 = ax1.twinx()
+    ax2.plot(x, time_minutes, color="#e74c3c", marker="o", linewidth=2,
+             markersize=8, label="Training time (min)")
+    ax2.set_ylabel("Training time (min)")
+    ax2.set_ylim(0, max(time_minutes) * 1.25)
+
+    for xi, tm in zip(x, time_minutes):
+        ax2.text(
+            xi,
+            tm + max(time_minutes) * 0.03,
+            f"{tm:.1f}m",
+            ha="center", va="bottom", fontsize=9, color="#e74c3c",
+        )
+
+    h1, l1 = ax1.get_legend_handles_labels()
+    h2, l2 = ax2.get_legend_handles_labels()
+    ax1.legend(h1 + h2, l1 + l2, loc="upper right")
+
+    ax1.set_title("Training Efficiency: Epochs Run & Wall-Clock Time")
+    ax1.grid(axis="y", alpha=0.3)
+    plt.tight_layout()
+    plt.savefig(output_dir / "sequential_training_efficiency.png", dpi=150)
     plt.close()
 
 

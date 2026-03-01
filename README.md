@@ -30,7 +30,8 @@ python -m src.sequential_training --dataset modelnet10
 python -m src.sequential_training --dataset modelnet40
 
 # Full ablation grid  (model × sampling × n_points × batch_size)
-python -m src.grid_training
+python -m src.grid_training --dataset modelnet10
+python -m src.grid_training --dataset modelnet40
 
 # Inference visualiser  (interactive menu → pick checkpoint → 3D viewer with live predictions)
 python -m src.visualize_inference

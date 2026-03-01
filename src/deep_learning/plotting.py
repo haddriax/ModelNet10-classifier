@@ -37,6 +37,7 @@ def create_ablation_plots(results_path: Path, output_dir: Path | None = None) ->
     plot_batchsize_effect(runs, output_dir, plt)
     plot_sampling_comparison(runs, output_dir, plt)
     plot_model_heatmap(runs, output_dir, plt)
+    plot_training_efficiency(runs, output_dir, plt, filename="ablation_training_efficiency.png")
 
     print(f"Plots saved to: {output_dir}")
 
@@ -387,13 +388,22 @@ def plot_per_class_heatmap(
     plt.close()
 
 
-def plot_training_efficiency(runs: list[dict], output_dir: Path, plt) -> None:
+def plot_training_efficiency(
+    runs: list[dict],
+    output_dir: Path,
+    plt,
+    *,
+    filename: str = "sequential_training_efficiency.png",
+) -> None:
     """Dual-axis chart: epochs trained (bars) and wall-clock time (line) per model.
 
     Args:
         runs: List of completed run result dicts.
         output_dir: Directory to save the plot.
         plt: The matplotlib.pyplot module (passed by caller).
+        filename: Output PNG filename. Defaults to
+            ``"sequential_training_efficiency.png"`` for sequential runs;
+            pass ``"ablation_training_efficiency.png"`` for ablation runs.
     """
     import numpy as np
 
@@ -441,7 +451,7 @@ def plot_training_efficiency(runs: list[dict], output_dir: Path, plt) -> None:
     ax1.set_title("Training Efficiency: Epochs Run & Wall-Clock Time")
     ax1.grid(axis="y", alpha=0.3)
     plt.tight_layout()
-    plt.savefig(output_dir / "sequential_training_efficiency.png", dpi=150)
+    plt.savefig(output_dir / filename, dpi=150)
     plt.close()
 
 

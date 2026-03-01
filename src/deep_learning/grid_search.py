@@ -196,7 +196,7 @@ class GridSearch:
     def _run_single(self, config: AblationConfig, index: int) -> dict:
         """Train one configuration and return result dict."""
         run_name = config.get_run_name()
-        save_path = self.models_dir / "ablation" / f"{run_name}.pth"
+        save_path = self.models_dir / f"{run_name}.pth"
 
         print(f"\n[{index}/{self.num_configs}] Running: {run_name}")
         print(f"  Model:    {config.model_class.__name__}")
@@ -252,5 +252,5 @@ class GridSearch:
     def _setup_directories(self) -> None:
         """Create output directories if they don't exist."""
         self.results_dir.mkdir(parents=True, exist_ok=True)
-        (self.models_dir / "ablation").mkdir(parents=True, exist_ok=True)
+        self.models_dir.mkdir(parents=True, exist_ok=True)
         Path("runs").mkdir(parents=True, exist_ok=True)

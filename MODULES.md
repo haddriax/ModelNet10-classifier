@@ -199,7 +199,13 @@ GridSearchConfig(
 
 ### `GridSearch`
 
-Iterates every combination, caches datasets by `(n_points, sampling)`, and saves results after each run for crash recovery. Entry point: `python -m src.grid_training`.
+Iterates every combination, caches datasets by `(n_points, sampling)`, and saves results after each run for crash recovery.
+
+The entry point `src/grid_training.py` builds the dataset factory with `functools.partial(make_datasets, data_dir=data_dir)` so the correct dataset root (ModelNet10 or ModelNet40) is pre-bound while keeping `GridSearch`'s `DatasetFactory` signature `(n_points, Sampling) → datasets` unchanged. Timestamped output paths are constructed the same way as `sequential_training.py`:
+```
+results/grid/{dataset}/YYYY-MM-DD_HHMMSS/
+models/grid/{dataset}/YYYY-MM-DD_HHMMSS/
+```
 
 ---
 
@@ -208,8 +214,8 @@ Iterates every combination, caches datasets by `(n_points, sampling)`, and saves
 | Function | Output files | Used by |
 |---|---|---|
 | `plot_sequential_results(results_path)` | `sequential_model_comparison.png`, `sequential_per_class_accuracy.png`, `sequential_per_class_f1.png`, `sequential_training_efficiency.png` | `run_sequential()`, `rebuild_figures.py` |
-| `plot_training_efficiency(runs, output_dir, plt)` | `sequential_training_efficiency.png` | called by `plot_sequential_results()` |
-| `create_ablation_plots(results_path)` | `accuracy_comparison.png`, `npoints_effect.png`, `batchsize_effect.png`, `sampling_comparison.png`, `model_heatmap.png` | `GridSearch` |
+| `plot_training_efficiency(runs, output_dir, plt, *, filename)` | `sequential_training_efficiency.png` (default) or `ablation_training_efficiency.png` | called by `plot_sequential_results()` and `create_ablation_plots()` |
+| `create_ablation_plots(results_path)` | `accuracy_comparison.png`, `npoints_effect.png`, `batchsize_effect.png`, `sampling_comparison.png`, `model_heatmap.png`, `ablation_training_efficiency.png` | `grid_training.py` |
 
 All plots are written to the same directory as the JSON file, or to `output_dir` if provided.
 
@@ -221,6 +227,6 @@ All plots are written to the same directory as the JSON file, or to `output_dir`
 |---|---|---|
 | `src/main.py` | `python -m src.main` | Interactive Open3D viewer — browse all meshes (N/Right = next, P/Left = prev) |
 | `src/sequential_training.py` | `python -m src.sequential_training [--dataset modelnet10\|modelnet40]` | Train all models sequentially with curated hyperparameters |
-| `src/grid_training.py` | `python -m src.grid_training` | Full ablation over model × sampling × n_points × batch_size |
+| `src/grid_training.py` | `python -m src.grid_training [--dataset modelnet10\|modelnet40]` | Full ablation over model × sampling × n_points × batch_size |
 | `src/visualize_inference.py` | `python -m src.visualize_inference` | Load a trained checkpoint, run inference on test meshes, visualise in 3D |
 | `src/rebuild_figures.py` | `python -m src.rebuild_figures` | Re-run `plot_sequential_results()` on any past JSON without retraining — useful after editing `plotting.py` |

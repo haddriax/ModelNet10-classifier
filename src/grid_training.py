@@ -1,11 +1,23 @@
 """Training entry point with grid search ablation study.
 
 Supports running a full ablation study over
-(Model Architecture x Sampling Method x n_points x batch_size).
-Results are saved as JSON and matplotlib plots.
+(Model Architecture x Sampling Method x n_points x batch_size)
+on either ModelNet10 or ModelNet40.
+
+Results are saved to a timestamped directory so past runs are never
+overwritten.  JSON + matplotlib plots are produced automatically.
+
+Usage::
+
+    # ModelNet10 (default)
+    python -m src.grid_training --dataset modelnet10
+
+    # ModelNet40
+    python -m src.grid_training --dataset modelnet40
 """
 
-from src.config import MODELS_DIR, RESULTS_DIR
+from functools import partial
+
 from src.deep_learning.dataset_factory import make_datasets
 from src.deep_learning.grid_search import GridSearch, GridSearchConfig
 from src.deep_learning.models import ALL_MODELS
@@ -14,6 +26,36 @@ from src.geometry import Sampling
 
 
 if __name__ == "__main__":
+    import argparse
+    from datetime import datetime
+
+    from src.config import DATA_DIR, MODELNET40_DIR, MODELS_DIR, RESULTS_DIR
+
+    parser = argparse.ArgumentParser(
+        description="Ablation grid search on ModelNet10 or ModelNet40."
+    )
+    parser.add_argument(
+        "--dataset",
+        choices=["modelnet10", "modelnet40"],
+        default="modelnet10",
+        help="Dataset to train on (default: modelnet10).",
+    )
+    args = parser.parse_args()
+
+    timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+
+    if args.dataset == "modelnet40":
+        data_dir    = MODELNET40_DIR
+        results_dir = RESULTS_DIR / "grid" / "modelnet40" / timestamp
+        models_dir  = MODELS_DIR  / "grid" / "modelnet40" / timestamp
+    else:
+        data_dir    = DATA_DIR
+        results_dir = RESULTS_DIR / "grid" / "modelnet10" / timestamp
+        models_dir  = MODELS_DIR  / "grid" / "modelnet10" / timestamp
+
+    # Pre-bind data_dir so the factory matches GridSearch's (n_points, Sampling) signature.
+    dataset_factory = partial(make_datasets, data_dir=data_dir)
+
     config = GridSearchConfig(
         model_classes=[
             ALL_MODELS['PointNet'],
@@ -27,9 +69,9 @@ if __name__ == "__main__":
 
     search = GridSearch(
         grid_config=config,
-        dataset_factory=make_datasets,
-        results_dir=RESULTS_DIR,
-        models_dir=MODELS_DIR,
+        dataset_factory=dataset_factory,
+        results_dir=results_dir,
+        models_dir=models_dir,
     )
 
     print(f"Generated {search.num_configs} configurations for ablation study")

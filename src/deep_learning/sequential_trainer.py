@@ -124,7 +124,7 @@ def _run_one(
     model_class = ALL_MODELS[model_name]
 
     run_name = f"{model_name}_{sampling_str}_pts{n_points}_bs{batch_size}"
-    save_path = models_dir / "sequential" / f"{run_name}.pth"
+    save_path = models_dir / f"{run_name}.pth"
     experiment_name = f"sequential_{run_name}"
 
     print(f"\n[{idx}/{total}] Training: {model_name}")
@@ -275,7 +275,7 @@ def run_sequential(
     _validate(configs)
 
     results_dir.mkdir(parents=True, exist_ok=True)
-    (models_dir / "sequential").mkdir(parents=True, exist_ok=True)
+    models_dir.mkdir(parents=True, exist_ok=True)
     Path("runs").mkdir(parents=True, exist_ok=True)
 
     total = len(configs)

@@ -15,18 +15,30 @@ class OffMeshParser:
             Tuple of (vertices: np.ndarray, faces: np.ndarray, name: str)
         """
         delimiter = ' '
-        # First line, usually "OFF"
+        # First line, usually "OFF" — supports both standard and compact formats:
+        #   Standard (ModelNet10): "OFF\n3514 3546 0\n..."
+        #   Compact  (ModelNet40): "OFF3514 3546 0\n..."
         line_idx = 0
         if has_header:
-            if lines[line_idx].strip() != 'OFF':
+            first_line = lines[line_idx].strip()
+            if not first_line.startswith('OFF'):
                 raise ValueError("Invalid OFF file: Missing header")
+            remainder = first_line[3:].strip()  # text after "OFF" on the same line
+            line_idx += 1
+            if remainder:
+                # Compact format: counts are on the same line as "OFF"
+                header = remainder.split(sep=delimiter)
+            else:
+                # Standard format: counts are on the next line
+                header = lines[line_idx].strip().split(sep=delimiter)
+                line_idx += 1
+        else:
+            header = lines[line_idx].strip().split(sep=delimiter)
             line_idx += 1
 
-        # Second line, contains information on the number of faces and vertices
-        header: list[str] = lines[line_idx].strip().split(sep=delimiter)
+        # Header contains: num_vertices num_faces num_edges
         num_vertices = int(header[0])
         num_faces = int(header[1])
-        line_idx += 1
 
         # Core of the file, iterating on each vertice coordinates
         vertices: np.ndarray = np.empty((num_vertices, 3))

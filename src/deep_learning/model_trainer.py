@@ -10,6 +10,8 @@ from torch.utils.tensorboard import SummaryWriter
 from pathlib import Path
 from datetime import datetime
 
+from src.deep_learning.configs import OptimizerFactory, SchedulerFactory
+
 
 class TrainingResults(TypedDict):
     """Results returned by ModelTrainer.train()"""
@@ -43,6 +45,8 @@ class ModelTrainer:
         lr: float | None = None,
         patience: int | None = None,
         early_stop_metric: str = "accuracy",
+        optimizer_factory: OptimizerFactory | None = None,
+        scheduler_factory: SchedulerFactory | None = None,
     ):
         """Initialise the trainer.
 
@@ -57,16 +61,25 @@ class ModelTrainer:
             patience: Number of epochs without improvement before stopping early.
                       None (default) disables early stopping.
             early_stop_metric: Metric watched by early stopping — ``"accuracy"``
-                               (higher is better) or ``"loss"`` (lower is better).
+                               (higher is better), ``"f1"`` (macro F1, higher is
+                               better), or ``"loss"`` (lower is better).
+            optimizer_factory: Callable ``(parameters, lr) -> Optimizer``.
+                               ``None`` → :class:`torch.optim.Adam`.
+                               See :data:`~src.deep_learning.configs.OptimizerFactory`.
+            scheduler_factory: Callable ``(optimizer, epochs_remaining) -> LRScheduler``.
+                               ``None`` → :class:`~torch.optim.lr_scheduler.CosineAnnealingLR`
+                               with ``T_max=epochs_remaining`` and ``eta_min=1e-5``.
+                               See :data:`~src.deep_learning.configs.SchedulerFactory`.
 
         Raises:
-            ValueError: If ``early_stop_metric`` is not ``"accuracy"`` or ``"loss"``,
-                        or if ``patience`` is not a positive integer when provided.
+            ValueError: If ``early_stop_metric`` is not ``"accuracy"``, ``"f1"``,
+                        or ``"loss"``, or if ``patience`` is not a positive integer
+                        when provided.
         """
         # -- validate new params early ------------------------------------------
-        if early_stop_metric not in ("accuracy", "loss"):
+        if early_stop_metric not in ("accuracy", "f1", "loss"):
             raise ValueError(
-                f"early_stop_metric must be 'accuracy' or 'loss', "
+                f"early_stop_metric must be 'accuracy', 'f1', or 'loss', "
                 f"got {early_stop_metric!r}"
             )
         if patience is not None and not (isinstance(patience, int) and patience >= 1):
@@ -87,8 +100,8 @@ class ModelTrainer:
             shuffle=True,
             num_workers=4,
             prefetch_factor=2,
-            pin_memory=True
-
+            pin_memory=True,
+            persistent_workers=True,  # keep workers alive between epochs
         )
         self.test_loader = DataLoader(
             test_dataset,
@@ -96,25 +109,31 @@ class ModelTrainer:
             shuffle=False,
             num_workers=2,
             prefetch_factor=2,
-            pin_memory=True
+            pin_memory=True,
+            persistent_workers=True,  # keep workers alive between epochs
         )
 
         base_lr = 0.001
         self.lr = lr if lr is not None else base_lr * (batch_size / 32)
 
+        self._optimizer_factory = optimizer_factory
+        self._scheduler_factory = scheduler_factory
+
         self.model = model.to(self.device)
-        self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.lr)
-        self.criterion = nn.CrossEntropyLoss()
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=50, eta_min=1e-5
+        self.optimizer = (
+            optimizer_factory(self.model.parameters(), self.lr)
+            if optimizer_factory is not None
+            else torch.optim.Adam(self.model.parameters(), lr=self.lr)
         )
+        self.criterion = nn.CrossEntropyLoss()
+        self.scheduler = None  # created in train() with the correct epochs_remaining
 
         # Early stopping state
         self.patience = patience
         self.early_stop_metric = early_stop_metric
         self._es_counter: int = 0
         self._es_best: float = (
-            0.0 if early_stop_metric == "accuracy" else float("inf")
+            0.0 if early_stop_metric in ("accuracy", "f1") else float("inf")
         )
 
         # TensorBoard setup
@@ -122,14 +141,14 @@ class ModelTrainer:
             experiment_name = f"pointnet_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
 
         log_dir = Path("runs") / experiment_name
-        self.writer = SummaryWriter(log_dir)
+        self.writer = SummaryWriter(str(log_dir))
         print(f"TensorBoard logs: {log_dir}")
         print(f"Run: tensorboard --logdir=runs")
 
         # Track best accuracy for saving
         self.best_test_acc = 0.0
 
-    def _es_improved(self, test_acc: float, test_loss: float) -> bool:
+    def _es_improved(self, test_acc: float, test_loss: float, test_f1: float) -> bool:
         """Return True if the tracked metric improved this epoch.
 
         Updates the internal best-value sentinel when improvement is detected.
@@ -137,6 +156,7 @@ class ModelTrainer:
         Args:
             test_acc: Test accuracy for the current epoch.
             test_loss: Test loss for the current epoch.
+            test_f1: Macro F1 score for the current epoch.
 
         Returns:
             True if the chosen metric improved over the previous best.
@@ -145,6 +165,10 @@ class ModelTrainer:
             improved = test_acc > self._es_best
             if improved:
                 self._es_best = test_acc
+        elif self.early_stop_metric == "f1":
+            improved = test_f1 > self._es_best
+            if improved:
+                self._es_best = test_f1
         else:  # "loss"
             improved = test_loss < self._es_best
             if improved:
@@ -194,8 +218,8 @@ class ModelTrainer:
         total_loss = 0
 
         num_classes = len(self.test_dataset.class_to_idx)
-        class_correct = [0] * num_classes
-        class_total = [0] * num_classes
+        class_correct   = [0] * num_classes
+        class_total     = [0] * num_classes
         class_predicted = [0] * num_classes
 
         with torch.no_grad():
@@ -209,11 +233,15 @@ class ModelTrainer:
                 correct += (predictions == labels).sum().item()
                 total += labels.size(0)
 
-                for label, prediction in zip(labels, predictions):
-                    class_total[label] += 1
-                    class_predicted[prediction] += 1
-                    if label == prediction:
-                        class_correct[label] += 1
+                # Vectorised per-class accumulation (avoids Python loop per sample)
+                hits = labels[labels == predictions]
+                batch_total     = torch.bincount(labels,      minlength=num_classes).tolist()
+                batch_predicted = torch.bincount(predictions, minlength=num_classes).tolist()
+                batch_correct   = torch.bincount(hits,        minlength=num_classes).tolist()
+                for cls in range(num_classes):
+                    class_total[cls]     += batch_total[cls]
+                    class_predicted[cls] += batch_predicted[cls]
+                    class_correct[cls]   += batch_correct[cls]
 
         avg_loss = total_loss / len(self.test_loader)
         accuracy = correct / total
@@ -267,7 +295,7 @@ class ModelTrainer:
             'epoch': epoch,
             'model_state_dict': self.model.state_dict(),
             'optimizer_state_dict': self.optimizer.state_dict(),
-            'scheduler_state_dict': self.scheduler.state_dict(),
+            'scheduler_state_dict': self.scheduler.state_dict() if self.scheduler is not None else None,
             'test_acc': test_acc,
             'best_test_acc': self.best_test_acc,
         }
@@ -293,7 +321,7 @@ class ModelTrainer:
         checkpoint = torch.load(checkpoint_path, map_location=self.device)
         self.model.load_state_dict(checkpoint['model_state_dict'])
         self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
-        if 'scheduler_state_dict' in checkpoint:
+        if 'scheduler_state_dict' in checkpoint and checkpoint['scheduler_state_dict'] is not None:
             self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
         self.best_test_acc = checkpoint.get('best_test_acc', 0.0)
 
@@ -308,9 +336,14 @@ class ModelTrainer:
         if resume:
             start_epoch = self.load_checkpoint()
 
-        # Reinitialize scheduler with the correct T_max for this training run
-        self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
-            self.optimizer, T_max=epochs - start_epoch, eta_min=1e-5
+        # Create scheduler with the correct epochs_remaining for this training run
+        epochs_remaining = epochs - start_epoch
+        self.scheduler = (
+            self._scheduler_factory(self.optimizer, epochs_remaining)
+            if self._scheduler_factory is not None
+            else torch.optim.lr_scheduler.CosineAnnealingLR(
+                self.optimizer, T_max=epochs_remaining, eta_min=1e-5
+            )
         )
 
         # Log model graph (only once)
@@ -357,12 +390,11 @@ class ModelTrainer:
                   f"Test Loss: {test_loss:.4f}, Test Acc: {test_acc:.4f}, "
                   f"F1: {test_metrics['macro_f1']:.4f}")
 
-            # Save checkpoint
+            # Save checkpoint only when accuracy improves
             is_best = test_acc > self.best_test_acc
             if is_best:
                 self.best_test_acc = test_acc
-
-            self.save_checkpoint(epoch, test_acc, is_best)
+                self.save_checkpoint(epoch, test_acc, is_best=True)
             self.scheduler.step()
 
             # Early stopping check
@@ -370,7 +402,7 @@ class ModelTrainer:
                 self.writer.add_scalar(
                     'EarlyStopping/patience_counter', self._es_counter, epoch
                 )
-                if self._es_improved(test_acc, test_loss):
+                if self._es_improved(test_acc, test_loss, test_metrics["macro_f1"]):
                     self._es_counter = 0
                 else:
                     self._es_counter += 1

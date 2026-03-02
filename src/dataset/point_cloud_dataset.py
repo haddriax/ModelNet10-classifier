@@ -90,6 +90,16 @@ class PointCloudDataset(BaseModelNetDataset):
         cache_name = f"pointcloud_{self.split}_{self.n_points}pts_{self.sampling_method.value}"
         return self.root_dir.parent / 'cache' / cache_name
 
+    @staticmethod
+    def _normalize_point_cloud(points: torch.Tensor) -> torch.Tensor:
+        """Center and scale point cloud to unit sphere (mean=0, max_norm=1)."""
+        centroid = points.mean(dim=0)
+        points = points - centroid
+        max_dist = points.norm(dim=1).max()
+        if max_dist > 0:
+            points = points / max_dist
+        return points
+
     def _build_cache(self):
         """Build or load point cloud cache from disk"""
         cache_dir = self._get_cache_path()
@@ -119,8 +129,8 @@ class PointCloudDataset(BaseModelNetDataset):
             cache_file = cache_dir / f'{idx:05d}.npy'
             np.save(cache_file, points)
 
-            # Keep in memory
-            self.cached_data.append(torch.from_numpy(points).float())
+            # Keep in memory (normalized)
+            self.cached_data.append(self._normalize_point_cloud(torch.from_numpy(points).float()))
 
     def _load_cache_from_disk(self, cache_dir: Path):
         """Load cached point clouds from disk"""
@@ -130,9 +140,9 @@ class PointCloudDataset(BaseModelNetDataset):
         for idx in tqdm(range(len(self.files)), desc="Loading cache"):
             cache_file = cache_dir / f'{idx:05d}.npy'
             points = np.load(cache_file)
-            self.cached_data.append(torch.from_numpy(points).float())
+            self.cached_data.append(self._normalize_point_cloud(torch.from_numpy(points).float()))
 
     def _process_mesh(self, mesh, idx: int) -> torch.Tensor:
         """Sample point cloud from mesh (when not using cache)"""
         points = mesh.sample_points(n_points=self.n_points, method=self.sampling_method)
-        return torch.from_numpy(points).float()
+        return self._normalize_point_cloud(torch.from_numpy(points).float())

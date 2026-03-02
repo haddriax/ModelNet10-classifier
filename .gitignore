@@ -1,6 +1,12 @@
 # Meshes files
 .off
 
+results/
+models/
+images/
+runs/
+.idea/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]

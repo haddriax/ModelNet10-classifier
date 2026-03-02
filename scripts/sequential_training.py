@@ -23,10 +23,10 @@ The implementation lives in :mod:`src.deep_learning.sequential_trainer`.
 Usage::
 
     # ModelNet10 (default)
-    python -m src.sequential_training --dataset modelnet10
+    python -m scripts.sequential_training --dataset modelnet10
 
     # ModelNet40
-    python -m src.sequential_training --dataset modelnet40
+    python -m scripts.sequential_training --dataset modelnet40
 """
 
 import torch

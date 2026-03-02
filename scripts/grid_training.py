@@ -10,10 +10,10 @@ overwritten.  JSON + matplotlib plots are produced automatically.
 Usage::
 
     # ModelNet10 (default)
-    python -m src.grid_training --dataset modelnet10
+    python -m scripts.grid_training --dataset modelnet10
 
     # ModelNet40
-    python -m src.grid_training --dataset modelnet40
+    python -m scripts.grid_training --dataset modelnet40
 """
 
 from functools import partial

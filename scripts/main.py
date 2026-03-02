@@ -1,3 +1,12 @@
+"""Interactive 3D mesh viewer — browse all ModelNet10 meshes in Open3D.
+
+Controls: N / Right Arrow = next mesh, P / Left Arrow = previous mesh.
+
+Usage::
+
+    python -m scripts.main
+"""
+
 import random
 
 from src.geometry import Mesh3D

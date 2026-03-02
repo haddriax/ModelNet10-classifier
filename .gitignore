@@ -224,3 +224,5 @@ unity/Visual_V0/.vscode/
 unity/Visual_V0/*.sln  
 unity/Visual_V0/Assets/Resources
 unity/Visual_V0/Assets/ScreenShots
+unity/Visual_V0/Assets/ModelsDatasetOutput
+unity/Visual_V0/Assets/DatasetTypeModelNet

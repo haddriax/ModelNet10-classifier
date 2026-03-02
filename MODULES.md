@@ -1,6 +1,6 @@
 # Modules Reference
 
-This document describes every package and module in `src/`, in pipeline order — from raw mesh files on disk to trained model and visualisation.
+This document describes every package and module in `src/` and the executable scripts in `scripts/`, in pipeline order — from raw mesh files on disk to trained model and visualisation.
 
 ---
 
@@ -13,6 +13,7 @@ This document describes every package and module in `src/`, in pipeline order �
                     └─► src/dataset/       batch + cache
                             └─► src/deep_learning/   train + evaluate
                                         └─► results/ + models/
+                                                └─► scripts/   visualise + run inference
 ```
 
 ---
@@ -55,6 +56,8 @@ pts  = mesh.sample_points(n, method)     # → np.ndarray (n, 3), float32
 ```
 
 `sample_points` caches the result in memory keyed on `(n_points, method)`. Pass `force_resample=True` to discard the cache (used when building the training set disk cache).
+
+If the mesh has **no faces** (vertex-only OFF file), `sample_points` automatically falls back to sampling from vertex positions via the private `_sample_from_vertices` method — FPS uses Open3D's `PointCloud.farthest_point_down_sample`; UNIFORM and POISSON use `numpy.random.choice`. A `UserWarning` is emitted so the caller knows the fallback was triggered.
 
 ---
 
@@ -174,7 +177,7 @@ Trains every model in `configs` one after another. Key details:
 - **Output** — saves `sequential_results.json` and four comparison plots (model comparison, per-class accuracy, per-class F1, training efficiency) to `results_dir`.
 - **Checkpoint paths** — `models_dir / f"{run_name}.pth"`.
 
-The entry point `src/sequential_training.py` builds timestamped paths:
+The entry point `scripts/sequential_training.py` builds timestamped paths:
 ```
 results/sequential/{dataset}/YYYY-MM-DD_HHMMSS/
 models/sequential/{dataset}/YYYY-MM-DD_HHMMSS/
@@ -201,7 +204,7 @@ GridSearchConfig(
 
 Iterates every combination, caches datasets by `(n_points, sampling)`, and saves results after each run for crash recovery.
 
-The entry point `src/grid_training.py` builds the dataset factory with `functools.partial(make_datasets, data_dir=data_dir)` so the correct dataset root (ModelNet10 or ModelNet40) is pre-bound while keeping `GridSearch`'s `DatasetFactory` signature `(n_points, Sampling) → datasets` unchanged. Timestamped output paths are constructed the same way as `sequential_training.py`:
+The entry point `scripts/grid_training.py` builds the dataset factory with `functools.partial(make_datasets, data_dir=data_dir)` so the correct dataset root (ModelNet10 or ModelNet40) is pre-bound while keeping `GridSearch`'s `DatasetFactory` signature `(n_points, Sampling) → datasets` unchanged. Timestamped output paths are constructed the same way as `sequential_training.py`:
 ```
 results/grid/{dataset}/YYYY-MM-DD_HHMMSS/
 models/grid/{dataset}/YYYY-MM-DD_HHMMSS/
@@ -221,12 +224,32 @@ All plots are written to the same directory as the JSON file, or to `output_dir`
 
 ---
 
-## Entry points
+## `src/deep_learning/inference.py`
+
+Shared inference helpers used by both `scripts/visualize_inference.py` and `scripts/infer_single.py`. Extracted into a library module so neither script depends on the other.
+
+| Symbol | Kind | Description |
+|---|---|---|
+| `SAMPLING_MAP` | `dict[str, Sampling]` | Maps string keys (`"uniform"`, `"fps"`, `"poisson"`) to `Sampling` enum values |
+| `_CKPT_PATTERN` | `re.Pattern` | Regex that parses `{Model}_{sampling}_pts{N}_bs{B}[_best].pth` filenames |
+| `_DATASET_MAP` | `dict[str, (Path, int)]` | Maps `"modelnet10"` / `"modelnet40"` to `(data_dir, num_classes)` |
+| `detect_dataset_from_path(path)` | function | Walks path components to find `"modelnet10"` or `"modelnet40"` |
+| `parse_checkpoint_config(path)` | function | Returns `(model_class, n_points, Sampling)` from a checkpoint filename, or `None` |
+| `load_model_from_checkpoint(path, model_class, num_classes, device)` | function | Instantiates the model, loads weights, sets `eval()` mode |
+| `run_inference(model, points_np, device)` | function | Unit-sphere normalises the point cloud, runs a forward pass, returns `(pred_idx, confidence)` |
+
+---
+
+## `scripts/` — Entry points
+
+All scripts are run from the project root with `python -m scripts.<name>`.
 
 | Script | Invocation | Purpose |
 |---|---|---|
-| `src/main.py` | `python -m src.main` | Interactive Open3D viewer — browse all meshes (N/Right = next, P/Left = prev) |
-| `src/sequential_training.py` | `python -m src.sequential_training [--dataset modelnet10\|modelnet40]` | Train all models sequentially with curated hyperparameters |
-| `src/grid_training.py` | `python -m src.grid_training [--dataset modelnet10\|modelnet40]` | Full ablation over model × sampling × n_points × batch_size |
-| `src/visualize_inference.py` | `python -m src.visualize_inference` | Load a trained checkpoint, run inference on test meshes, visualise in 3D |
-| `src/rebuild_figures.py` | `python -m src.rebuild_figures` | Re-run `plot_sequential_results()` on any past JSON without retraining — useful after editing `plotting.py` |
+| `main.py` | `python -m scripts.main` | Interactive Open3D viewer — browse all meshes (N/Right = next, P/Left = prev) |
+| `sequential_training.py` | `python -m scripts.sequential_training [--dataset modelnet10\|modelnet40]` | Train all models sequentially with curated hyperparameters |
+| `grid_training.py` | `python -m scripts.grid_training [--dataset modelnet10\|modelnet40]` | Full ablation over model × sampling × n_points × batch_size |
+| `visualize_inference.py` | `python -m scripts.visualize_inference` | Load a trained checkpoint, run inference on test meshes, visualise in 3D |
+| `infer_single.py` | `python -m scripts.infer_single` | Run one `.off` file through a checkpoint and print the predicted class; edit `MODEL_PATH` / `OBJECT_PATH` at the top |
+| `view_mesh.py` | `python -m scripts.view_mesh` | File-picker dialog to open any `.off` mesh; prints vertex/face counts and shows geometry in Open3D |
+| `rebuild_figures.py` | `python -m scripts.rebuild_figures` | Re-run `plot_sequential_results()` on any past JSON without retraining — useful after editing `plotting.py` |

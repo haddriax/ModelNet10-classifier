@@ -23,21 +23,27 @@ After working on 2D classification (CIFAR), I was curious about 3D classificatio
 uv sync
 
 # Interactive 3D mesh viewer  (N / Right = next mesh, P / Left = previous)
-python -m src.main
+python -m scripts.main
 
 # Train all models sequentially on ModelNet10 (default) or ModelNet40
-python -m src.sequential_training --dataset modelnet10
-python -m src.sequential_training --dataset modelnet40
+python -m scripts.sequential_training --dataset modelnet10
+python -m scripts.sequential_training --dataset modelnet40
 
 # Full ablation grid  (model × sampling × n_points × batch_size)
-python -m src.grid_training --dataset modelnet10
-python -m src.grid_training --dataset modelnet40
+python -m scripts.grid_training --dataset modelnet10
+python -m scripts.grid_training --dataset modelnet40
 
 # Inference visualiser  (interactive menu → pick checkpoint → 3D viewer with live predictions)
-python -m src.visualize_inference
+python -m scripts.visualize_inference
+
+# Single-file inference — edit MODEL_PATH and OBJECT_PATH at the top of the script
+python -m scripts.infer_single
+
+# Mesh inspector — file-picker dialog, shows geometry stats and Open3D view
+python -m scripts.view_mesh
 
 # Regenerate plots from a past run without retraining
-python -m src.rebuild_figures
+python -m scripts.rebuild_figures
 
 # Monitor training in real time
 tensorboard --logdir=runs
@@ -138,12 +144,12 @@ See [MODELS.md](MODELS.md) for architecture diagrams and simplified explanations
 
 ## Inference visualiser
 
-`src/visualize_inference.py` loads any trained checkpoint and lets you browse test samples in an interactive Open3D window while watching live predictions in the terminal.
+`scripts/visualize_inference.py` loads any trained checkpoint and lets you browse test samples in an interactive Open3D window while watching live predictions in the terminal.
 
 ### Launch
 
 ```bash
-python -m src.visualize_inference
+python -m scripts.visualize_inference
 ```
 
 No arguments are needed. The script automatically scans `models/` for every `.pth` file and presents a numbered menu:
@@ -205,7 +211,7 @@ Results and plots are saved per run under `results/sequential/{dataset}/{timesta
 To refresh or add plots without retraining, run:
 
 ```bash
-python -m src.rebuild_figures
+python -m scripts.rebuild_figures
 ```
 
 The script lists every `sequential_results.json` found under `results/sequential/` (newest first), lets you pick one or regenerate all, and re-runs the full `plot_sequential_results()` pipeline on the selected JSON. This is the intended workflow after editing `src/deep_learning/plotting.py`.
@@ -215,12 +221,18 @@ The script lists every `sequential_results.json` found under `results/sequential
 ## Project structure
 
 ```
+scripts/                        # Executable entry points (run with python -m scripts.<name>)
+├── main.py                     # Interactive mesh viewer
+├── sequential_training.py      # Sequential benchmark
+├── grid_training.py            # Ablation grid search
+├── visualize_inference.py      # Inference visualiser (Open3D)
+├── infer_single.py             # Single-file inference (edit MODEL_PATH / OBJECT_PATH)
+├── view_mesh.py                # Mesh inspector with file-picker dialog
+├── rebuild_figures.py          # Regenerate plots from saved JSON
+└── README.md                   # Per-script usage reference
+
 src/
 ├── config.py                   # Global path constants
-├── main.py                     # Interactive mesh viewer
-├── sequential_training.py      # Entry point: sequential benchmark
-├── grid_training.py            # Entry point: ablation grid
-├── visualize_inference.py      # Entry point: inference visualiser
 ├── geometry/
 │   ├── Mesh_3D.py              # Open3D mesh wrapper + point sampling
 │   └── sampling.py             # Sampling enum (UNIFORM, FPS, POISSON)
@@ -232,6 +244,7 @@ src/
 │   └── point_cloud_dataset.py  # Caching + normalisation
 └── deep_learning/
     ├── configs.py              # ModelConfig dataclass
+    ├── inference.py            # Shared helpers: checkpoint loading, forward pass
     ├── model_trainer.py        # Training loop + TensorBoard + checkpoints
     ├── sequential_trainer.py   # run_sequential() library function
     ├── grid_search.py          # GridSearch + GridSearchConfig

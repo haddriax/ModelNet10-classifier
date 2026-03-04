@@ -4,51 +4,59 @@ using System.IO;
 using UnityEngine;
 using Newtonsoft.Json;
 
-
-public class CameraOrbitCapture : MonoBehaviour
+public class CameraOrbitCaptureDepthMap : MonoBehaviour
 {
     private static string OBJ_PATH = "Models/models_prefabs";
     private GameObject[] modelsList;
 
-    public int numCameras = 12;        
-    public int numElevations = 3;      
+    [Header("Paramètres orbite")]
+    public int numCameras = 12;
+    public int numElevations = 3;
     public float orbitRadius = 3.0f;
 
+    [Header("Caméra")]
     public int imageWidth = 640;
     public int imageHeight = 480;
     public float cameraFOV = 60f;
 
+    [Header("Export")]
     public string outputBasePath = "Assets/ModelsDatasetOutput";
 
     private Camera captureCamera;
+    private Shader depthShader;
 
     void Start()
     {
         modelsList = Resources.LoadAll<GameObject>(OBJ_PATH);
+
+        // Shader de capture de profondeur
+        depthShader = Shader.Find("Custom/DepthCapture");
+        if (depthShader == null)
+            Debug.LogError("Shader 'Custom/DepthCapture' introuvable ! Vérifie Assets/Shaders/DepthCapture.shader");
 
         GameObject camGO = new GameObject("CaptureCamera");
         captureCamera = camGO.AddComponent<Camera>();
         captureCamera.fieldOfView = cameraFOV;
         captureCamera.clearFlags = CameraClearFlags.SolidColor;
         captureCamera.backgroundColor = Color.black;
- 
+        captureCamera.nearClipPlane = 0.01f;
+        captureCamera.farClipPlane = 100f;
+
         StartCoroutine(PlaceObjectAndTakeScreenshots());
     }
 
     IEnumerator PlaceObjectAndTakeScreenshots()
-    {        
+    {
         foreach (GameObject model in modelsList)
         {
             GameObject obj = Instantiate(model, Vector3.zero, Quaternion.identity);
+            obj.name = model.name; // supprime "(Clone)"
 
-            string objName = obj.name;
-            AddNoiseTextureToObject(obj);
-            string objFolder = Path.Combine(outputBasePath, objName);
+            string objFolder = Path.Combine(outputBasePath, obj.name);
             Directory.CreateDirectory(objFolder);
 
             Bounds bounds = GetBounds(obj);
             Vector3 center = bounds.center;
-
             float radius = Mathf.Max(bounds.extents.magnitude * 2f, orbitRadius);
 
             List<CameraInfo> cameraInfos = new List<CameraInfo>();
@@ -63,9 +71,9 @@ public class CameraOrbitCapture : MonoBehaviour
                 for (int i = 0; i < numCameras; i++)
                 {
                     float azimuth = (360f / numCameras) * i;
-
                     float azRad = azimuth * Mathf.Deg2Rad;
                     float elRad = elev * Mathf.Deg2Rad;
+
                     Vector3 offset = new Vector3(
                         radius * Mathf.Cos(elRad) * Mathf.Sin(azRad),
                         radius * Mathf.Sin(elRad),
@@ -78,20 +86,26 @@ public class CameraOrbitCapture : MonoBehaviour
                     yield return new WaitForEndOfFrame();
 
                     string imageName = $"frame_{frameIndex:D4}.png";
-                    string imagePath = Path.Combine(objFolder, imageName);
-                    SaveCameraRender(imagePath);
+                    string depthName = $"depth_{frameIndex:D4}.png";
+
+                    SaveCameraRender(Path.Combine(objFolder, imageName));
+                    SaveDepth(Path.Combine(objFolder, depthName));
 
                     cameraInfos.Add(new CameraInfo
                     {
                         frame_id = frameIndex,
                         image_name = imageName,
+                        depth_name = depthName,
                         position = Vec3ToArray(captureCamera.transform.position),
                         rotation = MatrixToArray(Matrix4x4.Rotate(captureCamera.transform.rotation)),
                         projection_matrix = MatrixToArray(captureCamera.projectionMatrix),
                         view_matrix = MatrixToArray(captureCamera.worldToCameraMatrix),
                         fov = cameraFOV,
                         width = imageWidth,
-                        height = imageHeight
+                        height = imageHeight,
+                        near_clip = captureCamera.nearClipPlane,
+                        far_clip = captureCamera.farClipPlane,
+                        cam_to_world = MatrixToArray(captureCamera.transform.localToWorldMatrix)
                     });
 
                     frameIndex++;
@@ -101,10 +115,15 @@ public class CameraOrbitCapture : MonoBehaviour
             string json = JsonConvert.SerializeObject(cameraInfos, Formatting.Indented);
             File.WriteAllText(Path.Combine(objFolder, "cameras.json"), json);
 
+            Debug.Log($"[{obj.name}] {frameIndex} frames capturées → {objFolder}");
             Destroy(obj);
             yield return null;
         }
-        Debug.Log("End of the process");
+
+        Debug.Log("=== End of the process ===");
+#if UNITY_EDITOR
+        UnityEditor.EditorApplication.isPlaying = false;
+#endif
     }
 
     void SaveCameraRender(string path)
@@ -117,7 +136,6 @@ public class CameraOrbitCapture : MonoBehaviour
         Texture2D img = new Texture2D(imageWidth, imageHeight, TextureFormat.RGB24, false);
         img.ReadPixels(new Rect(0, 0, imageWidth, imageHeight), 0, 0);
         img.Apply();
-
         File.WriteAllBytes(path, img.EncodeToPNG());
 
         captureCamera.targetTexture = null;
@@ -126,32 +144,26 @@ public class CameraOrbitCapture : MonoBehaviour
         Destroy(img);
     }
 
-    void AddNoiseTextureToObject(GameObject obj)
+    void SaveDepth(string path)
     {
-        Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
-        foreach (Renderer r in renderers)
-        {
-            Texture2D noiseTex = GenerateNoiseTexture(256, 256);
-            Material mat = new Material(r.material);
-            mat.mainTexture = noiseTex;
-            r.material = mat;
-        }
+        if (depthShader == null) return;
+
+        RenderTexture rt = new RenderTexture(imageWidth, imageHeight, 24);
+        captureCamera.targetTexture = rt;
+        captureCamera.RenderWithShader(depthShader, "");
+
+        RenderTexture.active = rt;
+        Texture2D tex = new Texture2D(imageWidth, imageHeight, TextureFormat.RGB24, false);
+        tex.ReadPixels(new Rect(0, 0, imageWidth, imageHeight), 0, 0);
+        tex.Apply();
+        File.WriteAllBytes(path, tex.EncodeToPNG());
+
+        captureCamera.targetTexture = null;
+        RenderTexture.active = null;
+        Destroy(rt);
+        Destroy(tex);
     }
 
-    Texture2D GenerateNoiseTexture(int width, int height)
-    {
-        Texture2D tex = new Texture2D(width, height);
-        for (int y = 0; y < height; y++)
-            for (int x = 0; x < width; x++)
-            {
-                float n = Mathf.PerlinNoise(x * 0.1f, y * 0.1f);
-                Color c = new Color(n * 0.4f + 0.3f, n * 0.35f + 0.25f, n * 0.3f + 0.2f);
-                tex.SetPixel(x, y, c);
-            }
-        tex.Apply();
-        return tex;
-    }
-    
     Bounds GetBounds(GameObject obj)
     {
         Renderer[] renderers = obj.GetComponentsInChildren<Renderer>();
@@ -175,11 +187,15 @@ public class CameraOrbitCapture : MonoBehaviour
     {
         public int frame_id;
         public string image_name;
+        public string depth_name;
         public float[] position;
         public float[] rotation;
         public float[] projection_matrix;
         public float[] view_matrix;
         public float fov;
         public int width, height;
+        public float near_clip;
+        public float far_clip;
+        public float[] cam_to_world;
     }
 }

@@ -1,5 +1,5 @@
 import os
-from reconstruct import reconstruct_folder
+from reconstruct_from_shaders import reconstruct_folder
 
 INPUT_DIR  = r"C:\Users\fanny\OneDrive\Bureau\Cours_CS\DEEPL\ModelNet10-classifier\unity\Visual_V0\Assets\ModelsDatasetOutput"
 
@@ -46,7 +46,6 @@ def main():
 
     if failed:
         print("Échecs :", ", ".join(failed))
-        
 
 if __name__ == "__main__":
     main()

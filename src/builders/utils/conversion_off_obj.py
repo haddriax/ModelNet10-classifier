@@ -4,11 +4,11 @@ from pathlib import Path
 project_root = Path(__file__).resolve().parent.parent.parent
 sys.path.insert(0, str(project_root))
 
-from config import DATA_DIR, PROJECT_ROOT
+from config import DATA_DIR
 from pathlib import Path
 
 model_files = list(DATA_DIR.rglob("*.off"))
-directory_obj = Path( PROJECT_ROOT / "data" / "ModelNet10" / "models_obj")
+directory_obj = Path( r"C:\Users\fanny\OneDrive\Bureau\Cours_CS\DEEPL\ModelNet10-classifier\unity\Visual_V0\Assets\Resources\Models\models_obj")
 directory_obj.mkdir(parents=True, exist_ok=True)
 
 

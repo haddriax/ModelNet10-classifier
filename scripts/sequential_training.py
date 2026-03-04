@@ -137,13 +137,18 @@ if __name__ == "__main__":
     from datetime import datetime
     from src.config import DATA_DIR, MODELNET40_DIR, MODELS_DIR, RESULTS_DIR
 
+    # @todo: move derterminist configs into config files and ensure it's used in every training
+    torch.manual_seed(42)
+    torch.backends.cudnn.deterministic = True
+    torch.backends.cudnn.benchmark = False
+
     parser = argparse.ArgumentParser(
         description="Sequential model training on ModelNet10 or ModelNet40."
     )
     parser.add_argument(
         "--dataset",
         choices=["modelnet10", "modelnet40"],
-        default="modelnet40",
+        default="modelnet10",
         help="Dataset to train on (default: modelnet10).",
     )
     args = parser.parse_args()

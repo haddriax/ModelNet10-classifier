@@ -4,64 +4,31 @@ Loads a trained checkpoint from an interactive terminal menu, then displays
 random test samples in Open3D (wireframe + point cloud) while running live
 inference. Press SPACE for the next sample, A to quit.
 
-Entry point:
-    python -m src.visualize_inference
+Usage::
+
+    python -m scripts.visualize_inference
 """
 
 import random
-import re
 import sys
 from pathlib import Path
 
 import open3d as o3d
 import torch
-import torch.nn.functional as F
 
 from src.builders.mesh_3D_builder import Mesh3DBuilder
-from src.config import DATA_DIR, MODELNET40_DIR, MODELS_DIR
+from src.config import MODELS_DIR
 from src.dataset.point_cloud_dataset import PointCloudDataset
-from src.deep_learning.models import ALL_MODELS
+from src.deep_learning.inference import (
+    SAMPLING_MAP, _DATASET_MAP,
+    detect_dataset_from_path, parse_checkpoint_config,
+    load_model_from_checkpoint, run_inference,
+)
 from src.geometry import Sampling
 
 # ---------------------------------------------------------------------------
 # Checkpoint scanning and selection
 # ---------------------------------------------------------------------------
-
-SAMPLING_MAP: dict[str, Sampling] = {
-    "uniform": Sampling.UNIFORM,
-    "fps": Sampling.FARTHEST_POINT,
-    "poisson": Sampling.POISSON,
-}
-
-# Matches: {ModelName}_{sampling}_pts{N}_bs{B}[_best].pth
-_CKPT_PATTERN = re.compile(
-    r'^([A-Za-z]+(?:PP)?)_(uniform|fps|poisson)_pts(\d+)_bs\d+',
-    re.IGNORECASE,
-)
-
-
-_DATASET_MAP: dict[str, tuple[Path, int]] = {
-    "modelnet10": (DATA_DIR,       10),
-    "modelnet40": (MODELNET40_DIR, 40),
-}
-
-
-def detect_dataset_from_path(path: Path) -> tuple[Path, int] | None:
-    """Infer data_dir and num_classes from the checkpoint's directory tree.
-
-    Looks for 'modelnet10' or 'modelnet40' among the path components.
-
-    Args:
-        path: Path to the checkpoint file.
-
-    Returns:
-        (data_dir, num_classes) if a known dataset name is found, else None.
-    """
-    for part in path.parts:
-        key = part.lower()
-        if key in _DATASET_MAP:
-            return _DATASET_MAP[key]
-    return None
 
 
 def scan_checkpoints(models_dir: Path) -> list[Path]:
@@ -72,33 +39,6 @@ def scan_checkpoints(models_dir: Path) -> list[Path]:
         print("Run `make train` first to produce trained checkpoints.")
         sys.exit(1)
     return checkpoints
-
-
-def parse_checkpoint_config(
-    path: Path,
-) -> tuple[type, int, Sampling] | None:
-    """Parse model class, n_points and sampling method from a checkpoint filename.
-
-    Args:
-        path: Path to the .pth checkpoint file.
-
-    Returns:
-        (model_class, n_points, sampling) if filename matches convention, else None.
-    """
-    match = _CKPT_PATTERN.match(path.stem)
-    if not match:
-        return None
-
-    model_name, sampling_str, n_points_str = match.groups()
-    model_class = ALL_MODELS.get(model_name)
-    if model_class is None:
-        return None
-
-    sampling = SAMPLING_MAP.get(sampling_str.lower())
-    if sampling is None:
-        return None
-
-    return model_class, int(n_points_str), sampling
 
 
 def interactive_menu(checkpoints: list[Path]) -> Path:
@@ -112,7 +52,6 @@ def interactive_menu(checkpoints: list[Path]) -> Path:
     """
     print("\nAvailable checkpoints:")
     for i, ckpt in enumerate(checkpoints, start=1):
-        # Show path relative to project root for readability
         try:
             rel = ckpt.relative_to(Path.cwd())
         except ValueError:
@@ -139,6 +78,8 @@ def resolve_config_interactively(
     Returns:
         (model_class, n_points, sampling)
     """
+    from src.deep_learning.models import ALL_MODELS
+
     parsed = parse_checkpoint_config(path)
     if parsed is not None:
         return parsed
@@ -169,70 +110,6 @@ def resolve_config_interactively(
         print(f"  Choose from: {', '.join(SAMPLING_MAP.keys())}")
 
     return model_class, n_points, sampling
-
-
-# ---------------------------------------------------------------------------
-# Model loading and inference
-# ---------------------------------------------------------------------------
-
-def load_model_from_checkpoint(
-    path: Path,
-    model_class: type,
-    num_classes: int,
-    device: torch.device | None = None,
-) -> torch.nn.Module:
-    """Instantiate model and load weights from checkpoint.
-
-    Args:
-        path: Path to .pth checkpoint file.
-        model_class: The nn.Module subclass to instantiate.
-        num_classes: Number of output classes (10 for ModelNet10, 40 for ModelNet40).
-        device: Target device (defaults to CUDA if available).
-
-    Returns:
-        Model in eval mode on the specified device.
-    """
-    if device is None:
-        device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-    model = model_class(num_classes=num_classes)
-    checkpoint = torch.load(path, map_location=device)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model.eval()
-    return model.to(device)
-
-
-def run_inference(
-    model: torch.nn.Module,
-    points_np,
-    device: torch.device,
-) -> tuple[int, float]:
-    """Run a single forward pass and return (predicted_class_idx, confidence).
-
-    Args:
-        model: Trained model in eval mode.
-        points_np: numpy array [N, 3] of point cloud coordinates.
-        device: Device for inference.
-
-    Returns:
-        (predicted_class_index, confidence_score in [0, 1])
-    """
-    x = torch.from_numpy(points_np).float()
-
-    # Unit-sphere normalisation — must match PointCloudDataset._normalize_point_cloud
-    centroid = x.mean(dim=0)
-    x = x - centroid
-    max_dist = x.norm(dim=1).max()
-    if max_dist > 0:
-        x = x / max_dist
-
-    x = x.unsqueeze(0).to(device)  # [1, N, 3]
-    with torch.no_grad():
-        logits = model(x)
-    probs = F.softmax(logits, dim=1)
-    pred_idx = int(probs.argmax(1).item())
-    confidence = float(probs[0, pred_idx].item())
-    return pred_idx, confidence
 
 
 # ---------------------------------------------------------------------------
@@ -293,15 +170,12 @@ def run_visualizer(
         model_name: Display name for the window title.
         device: Inference device.
     """
-    # Shuffle dataset indices for random traversal order
     random_order = list(range(len(dataset)))
     random.shuffle(random_order)
 
-    # Shared mutable state (closure-friendly dict)
     state = {"pos": 0}
 
     def load_sample(vis) -> bool:
-        """Load the current sample, run inference, update display."""
         idx = random_order[state["pos"]]
         off_path = dataset.files[idx]
         true_label_idx = dataset.labels[idx]
@@ -313,13 +187,11 @@ def run_visualizer(
 
         correct_mark = "✓" if pred_label == true_label else "✗"
 
-        # Update 3D view
         vis.clear_geometries()
         vis.add_geometry(wireframe)
         vis.add_geometry(pcd)
         vis.reset_view_point(True)
 
-        # Terminal output
         sep = "━" * 57
         print(f"\n{sep}")
         print(
@@ -345,17 +217,14 @@ def run_visualizer(
         vis.close()
         return False
 
-    # Build window (title is static — Open3D has no runtime title-change API)
     window_title = f"Inference  —  {model_name}  |  {n_points} pts  |  {sampling.value}"
     vis = o3d.visualization.VisualizerWithKeyCallback()
     vis.create_window(window_name=window_title, width=1280, height=800)
 
-    # Register keyboard callbacks
-    vis.register_key_callback(32, on_spacebar)          # SPACE
-    vis.register_key_callback(ord("A"), on_quit)        # A
-    vis.register_key_callback(256, on_quit)             # Escape (GLFW_KEY_ESCAPE)
+    vis.register_key_callback(32, on_spacebar)
+    vis.register_key_callback(ord("A"), on_quit)
+    vis.register_key_callback(256, on_quit)
 
-    # Load the first sample
     load_sample(vis)
 
     print(f"\nOpen3D window open: {window_title!r}")
@@ -371,13 +240,9 @@ def main() -> None:
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Device: {device}")
 
-    # 1. Discover checkpoints
     checkpoints = scan_checkpoints(MODELS_DIR)
-
-    # 2. User picks one
     selected = interactive_menu(checkpoints)
 
-    # 3. Parse or ask for config
     model_class, n_points, sampling = resolve_config_interactively(selected)
     model_name = model_class.__name__
     print(
@@ -385,12 +250,10 @@ def main() -> None:
         f"\nCheckpoint: {selected}"
     )
 
-    # 3b. Detect dataset → data_dir + num_classes
     detected = detect_dataset_from_path(selected)
     if detected is not None:
         data_dir, num_classes = detected
     else:
-        # Fallback for checkpoints outside the standard path structure
         print("\nCould not detect dataset from checkpoint path.")
         valid = list(_DATASET_MAP.keys())
         while True:
@@ -400,10 +263,8 @@ def main() -> None:
                 break
             print(f"  Choose from: {', '.join(valid)}")
 
-    # 4. Load model weights
     model = load_model_from_checkpoint(selected, model_class, num_classes=num_classes, device=device)
 
-    # 5. Build test dataset (cache_processed=True re-uses cached test points)
     dataset = PointCloudDataset(
         root_dir=data_dir,
         split='test',
@@ -419,7 +280,6 @@ def main() -> None:
 
     print(f"\nPress SPACE to cycle through random test samples | A to quit\n")
 
-    # 6. Launch interactive visualizer
     run_visualizer(model, dataset, n_points, sampling, model_name, device)
 
 

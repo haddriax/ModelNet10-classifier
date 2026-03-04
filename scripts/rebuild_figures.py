@@ -6,7 +6,7 @@ on the selected file(s).
 
 Use this after editing ``plotting.py`` to refresh figures without retraining::
 
-    python -m src.rebuild_figures
+    python -m scripts.rebuild_figures
 
 The menu lets you pick a single result set or regenerate all at once.
 """

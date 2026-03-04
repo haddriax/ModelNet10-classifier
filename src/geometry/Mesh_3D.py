@@ -1,5 +1,7 @@
 """3D mesh representation with point cloud sampling."""
 
+import warnings
+
 import numpy as np
 import open3d as o3d
 
@@ -84,6 +86,12 @@ class Mesh3D:
         if not force_resample and self._point_cloud is not None and self._sampling_params == params:
             return self._point_cloud
 
+        # No face data — fall back to vertex sampling with a warning
+        if len(self.faces) == 0:
+            self._point_cloud = self._sample_from_vertices(n_points, method)
+            self._sampling_params = params
+            return self._point_cloud
+
         # Sample based on method
         if method == Sampling.UNIFORM:
             pcd = self.triangle_mesh.sample_points_uniformly(n_points)
@@ -100,6 +108,32 @@ class Mesh3D:
         self._sampling_params = params
 
         return self._point_cloud
+
+    def _sample_from_vertices(self, n_points: int, method: Sampling) -> np.ndarray:
+        """Sample n_points from vertex positions when no face data is available.
+
+        Args:
+            n_points: Number of points to return.
+            method: Sampling strategy (FARTHEST_POINT uses Open3D FPS on the
+                    vertex set; UNIFORM and POISSON fall back to random choice).
+
+        Returns:
+            Nx3 float32 array of sampled vertex positions.
+        """
+        warnings.warn(
+            f"Mesh '{self.name}' has no faces — falling back to vertex sampling. "
+            "Results may differ from mesh-surface sampling.",
+            UserWarning,
+            stacklevel=3,
+        )
+        num_v = len(self.vertices)
+        if method == Sampling.FARTHEST_POINT and num_v > n_points:
+            pcd = o3d.geometry.PointCloud()
+            pcd.points = o3d.utility.Vector3dVector(self.vertices)
+            pcd = pcd.farthest_point_down_sample(n_points)
+            return np.asarray(pcd.points, dtype=np.float32)
+        indices = np.random.choice(num_v, n_points, replace=num_v < n_points)
+        return self.vertices[indices].astype(np.float32)
 
     def __str__(self) -> str:
         return f"Mesh3D(name='{self.name}', vertices={len(self.vertices)}, faces={len(self.faces)})"

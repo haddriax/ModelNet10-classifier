@@ -28,6 +28,7 @@ def make_datasets(
     n_points: int,
     sampling_method: Sampling,
     data_dir: Path = DATA_DIR,
+    use_cache: bool = True,
 ) -> tuple[PointCloudDataset, PointCloudDataset]:
     """Create a cached train/test :class:`~src.dataset.PointCloudDataset` pair.
 
@@ -35,6 +36,7 @@ def make_datasets(
     the training split is re-sampled dynamically each epoch for augmentation.
 
     Args:
+        use_cache: If ``True``, will cache and reeuse cached train/test point clouds.
         n_points: Number of points sampled per mesh.
         sampling_method: Point-cloud sampling strategy
                          (:attr:`~src.geometry.Sampling.UNIFORM`,
@@ -52,7 +54,7 @@ def make_datasets(
         n_points=n_points,
         sampling_method=sampling_method,
         use_existing_split=True,
-        cache_processed=True,
+        cache_processed=use_cache,
     )
     test_ds = PointCloudDataset(
         root_dir=data_dir,
@@ -60,6 +62,6 @@ def make_datasets(
         n_points=n_points,
         sampling_method=sampling_method,
         use_existing_split=True,
-        cache_processed=True,
+        cache_processed=use_cache,
     )
     return train_ds, test_ds

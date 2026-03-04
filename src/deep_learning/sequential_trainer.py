@@ -139,9 +139,10 @@ def _run_one(
     timestamp = datetime.now().isoformat()
 
     try:
+        # @todo: dataset caching or runtime sampling is to be fixed (runtime sampling == more randomness in data) ------
         cache_key = (n_points, sampling_str)
         if cache_key not in dataset_cache:
-            dataset_cache[cache_key] = make_datasets(n_points, sampling, data_dir)
+            dataset_cache[cache_key] = make_datasets(n_points, sampling, data_dir, use_cache=False)
         train_ds, test_ds = dataset_cache[cache_key]
 
         num_classes = len(train_ds.class_to_idx)

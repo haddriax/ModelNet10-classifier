@@ -50,9 +50,8 @@ def farthest_point_sample(xyz: torch.Tensor, npoint: int) -> torch.Tensor:
     B, N, C = xyz.shape
 
     # If requesting >= all points, return all indices directly
-    if npoint >= N:
-        idx = torch.arange(N, dtype=torch.long, device=device).unsqueeze(0).expand(B, -1)
-        return idx
+    if not torch.jit.is_tracing() and npoint >= N:
+        return torch.arange(N, dtype=torch.long, device=device).unsqueeze(0).expand(B, -1)
 
     centroids = torch.zeros(B, npoint, dtype=torch.long, device=device)
     distance = torch.ones(B, N, device=device) * 1e10
@@ -111,10 +110,8 @@ def query_ball_point(radius: float, nsample: int, xyz: torch.Tensor, new_xyz: to
     group_idx[sqrdists > radius ** 2] = N
     group_idx = group_idx.sort(dim=-1)[0][:, :, :nsample]
 
-    # Pad incomplete groups by repeating first index
-    # Clamp to valid range in case no points fall within radius
-    max_idx = torch.tensor(N - 1, dtype=torch.long, device=device)
-    group_first = torch.min(group_idx[:, :, 0], max_idx).view(B, S, 1).repeat(1, 1, nsample)
+    # Pad incomplete groups by repeating first valid index
+    group_first = group_idx[:, :, 0:1].clamp(max=xyz.size(1) - 1).expand(B, S, nsample)
     mask = group_idx == N
     group_idx[mask] = group_first[mask]
 

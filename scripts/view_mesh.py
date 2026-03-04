@@ -58,15 +58,11 @@ def main() -> None:
     geometries: list = []
 
     if n_faces > 0:
-        # Gray wireframe of the original triangle mesh
         wireframe = o3d.geometry.LineSet.create_from_triangle_mesh(mesh.triangle_mesh)
         wireframe.paint_uniform_color([0.5, 0.5, 0.5])
         geometries.append(wireframe)
-
-        # Green sampled point cloud (same pipeline as training)
         points_np = mesh.sample_points(n_points=_N_POINTS, method=Sampling.UNIFORM)
     else:
-        # Face-less file — show all raw vertices so nothing is hidden
         points_np = mesh.vertices.astype(np.float32)
 
     pcd = o3d.geometry.PointCloud()

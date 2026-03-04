@@ -1,2 +1,2 @@
 from src.geometry.sampling import Sampling
-from src.geometry.Mesh_3D import Mesh3D
+from src.geometry.mesh3d import Mesh3D

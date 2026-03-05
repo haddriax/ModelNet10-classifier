@@ -1,4 +1,3 @@
-
 # Projet Vision par Ordinateur
 
 # Reconstruction 3D depuis ModelNet10
@@ -9,6 +8,18 @@
 - Python 3.x
 - Packages Python : `opencv-contrib-python`, `numpy`, `Pillow`
 - Package Unity : `com.unity.nuget.newtonsoft-json`
+
+## Données
+
+https://drive.google.com/drive/folders/1-UUY4vqwnzN8cYLk0dYU7C2SdA2VdurU?usp=sharing
+
+* unity/Visual_V0/Assets/ScreenShots
+* unity/Visual_V0/Assets/ModelsDatasetOutput
+* unity/Visual_V0/Assets/DatasetTypeModelNet
+* unity/Visual_V0/Assets/DatasetTypeModelNetMultiView
+* unity/Visual_V0/Assets/DatasetTypeModelNetStereovision
+* unity/Visual_V0/Assets/DatasetTypeModelNetCanny
+* unity/Visual_V0/Assets/Resources
 
 ---
 
@@ -113,7 +124,7 @@ en raison d'une erreur de conversion de repère Unity → OpenCV
 
 ---
 
-## Méthode D — Depth map vue unique 
+## Méthode D — Depth map vue unique
 
 ### Capture (Unity)
 

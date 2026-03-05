@@ -1,5 +1,7 @@
 
-# Projet Vision par Ordinateur — Reconstruction 3D depuis ModelNet10
+# Projet Vision par Ordinateur
+
+# Reconstruction 3D depuis ModelNet10
 
 ## Prérequis
 

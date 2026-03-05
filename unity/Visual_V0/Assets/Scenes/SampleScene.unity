@@ -134,6 +134,7 @@ GameObject:
   - component: {fileID: 677578586}
   - component: {fileID: 677578588}
   - component: {fileID: 677578589}
+  - component: {fileID: 677578590}
   m_Layer: 0
   m_Name: cameraManager
   m_TagString: Untagged
@@ -208,6 +209,24 @@ MonoBehaviour:
   imageHeight: 480
   cameraFOV: 60
   outputBasePath: Assets/ModelsDatasetOutput
+--- !u!114 &677578590
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 677578585}
+  m_Enabled: 0
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9107bebf26f11984199b589d47e417e5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  baseline: 30
+  distanceToObject: 100
+  cameraFOV: 60
+  imageWidth: 640
+  imageHeight: 480
+  outputBasePath: Assets/ScreenShots
 --- !u!1 &705507993
 GameObject:
   m_ObjectHideFlags: 0

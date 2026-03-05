@@ -21,7 +21,7 @@ cd src/builders/utils
 python extract_modelnet10_test_dataset.py
 ```
 
-### Étape 2 :Conversion .off → .obj
+### Étape 2 : Conversion .off → .obj
 
 ```bash
 cd src/builders/utils

@@ -10,8 +10,8 @@ public class CameraOrbitCaptureDepthMap : MonoBehaviour
     private GameObject[] modelsList;
 
     [Header("Paramètres orbite")]
-    public int numCameras = 12;
-    public int numElevations = 3;
+    public int numCameras = 6;
+    public int numElevations = 2;
     public float orbitRadius = 3.0f;
 
     [Header("Caméra")]
@@ -20,7 +20,7 @@ public class CameraOrbitCaptureDepthMap : MonoBehaviour
     public float cameraFOV = 60f;
 
     [Header("Export")]
-    public string outputBasePath = "Assets/ModelsDatasetOutput";
+    public string outputBasePath = "Assets/ModelsDatasetOutputLessViews";
 
     private Camera captureCamera;
     private Shader depthShader;
@@ -64,7 +64,8 @@ public class CameraOrbitCaptureDepthMap : MonoBehaviour
 
             float[] elevations = new float[numElevations];
             for (int e = 0; e < numElevations; e++)
-                elevations[e] = Mathf.Lerp(-20f, 40f, (float)e / (numElevations - 1));
+                //elevations[e] = Mathf.Lerp(-20f, 40f, (float)e / (numElevations - 1));
+                elevations[e] = Mathf.Lerp(0f, 30f, (float)e / (numElevations - 1));
 
             foreach (float elev in elevations)
             {

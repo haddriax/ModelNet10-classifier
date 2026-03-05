@@ -232,3 +232,5 @@ unity/Visual_V0/Assets/Resources
 unity/Visual_V0/Assets/ScreenShots
 unity/Visual_V0/Assets/ModelsDatasetOutput
 unity/Visual_V0/Assets/DatasetTypeModelNet
+unity/Visual_V0/Assets/DatasetTypeModelNetMultiView
+unity/Visual_V0/Assets/DatasetTypeModelNetStereovision

@@ -67,6 +67,7 @@
     <Compile Include="Assets\Scripts\CameraOrbitCapture.cs" />
     <Compile Include="Assets\Scripts\CameraOrbitCaptureDepthMap.cs" />
     <Compile Include="Assets\Scripts\ScreenshotCapture.cs" />
+    <Compile Include="Assets\Scripts\ScreeshotCapturePlaceCamera.cs" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Assets\Shaders\DepthCapture.shader" />

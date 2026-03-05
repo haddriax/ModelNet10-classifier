@@ -3,7 +3,7 @@ from reconstruct import reconstruct_folder
 
 INPUT_DIR  = r"C:\Users\fanny\OneDrive\Bureau\Cours_CS\DEEPL\ModelNet10-classifier\unity\Visual_V0\Assets\ModelsDatasetOutput"
 
-OUTPUT_DIR = r"C:\Users\fanny\OneDrive\Bureau\Cours_CS\DEEPL\ModelNet10-classifier\unity\Visual_V0\Assets\DatasetTypeModelNet"
+OUTPUT_DIR = r"C:\Users\fanny\OneDrive\Bureau\Cours_CS\DEEPL\ModelNet10-classifier\unity\Visual_V0\Assets\DatasetTypeModelNetCanny"
 
 def main():
     if not os.path.exists(INPUT_DIR):

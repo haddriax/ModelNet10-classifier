@@ -52,6 +52,8 @@ public class CameraOrbitCaptureDepthMap : MonoBehaviour
             GameObject obj = Instantiate(model, Vector3.zero, Quaternion.identity);
             obj.name = model.name; // supprime "(Clone)"
 
+            obj.transform.rotation = Quaternion.Euler(-90f, 0f, 0f);
+
             string objFolder = Path.Combine(outputBasePath, obj.name);
             Directory.CreateDirectory(objFolder);
 

@@ -11,9 +11,11 @@
 
 ## Données
 
-### Lien vers les données :
+### Lien Google Drive :
 
 https://drive.google.com/drive/folders/1-UUY4vqwnzN8cYLk0dYU7C2SdA2VdurU?usp=sharing
+
+### Dossiers disponible :
 
 * unity/Visual_V0/Assets/ScreenShots
 * unity/Visual_V0/Assets/ModelsDatasetOutput
